@@ -8,14 +8,13 @@ public class User {
     private final String id;
     private final Email email;
     private String name;
-    private final Password password;
+    private Password password; 
     private final LocalDateTime createdAt;
 
     public User(Email email, String name, Password password) {
         if (email == null) throw new IllegalArgumentException("Email cannot be null.");
         if (password == null) throw new IllegalArgumentException("Password cannot be null.");
         if (name == null || name.isBlank()) throw new IllegalArgumentException("Name cannot be blank.");
-
         this.id = UUID.randomUUID().toString();
         this.email = email;
         this.name = name.trim();
@@ -32,6 +31,11 @@ public class User {
     public void setName(String name) {
         if (name == null || name.isBlank()) throw new IllegalArgumentException("Name cannot be blank.");
         this.name = name.trim();
+    }
+
+    public void setPassword(Password newPassword) {
+        if (newPassword == null) throw new IllegalArgumentException("Password cannot be null.");
+        this.password = newPassword;
     }
 
     @Override

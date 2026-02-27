@@ -6,7 +6,7 @@ import com.mycontacts.domain.User;
 import java.util.*;
 
 public class UserRepository {
-    private final Map<String, User> byEmail = new HashMap<>(); 
+    private final Map<String, User> byEmail = new HashMap<>();
 
     public boolean existsByEmail(Email email) {
         return byEmail.containsKey(email.getValue());
@@ -18,6 +18,12 @@ public class UserRepository {
 
     public Optional<User> findByEmail(Email email) {
         return Optional.ofNullable(byEmail.get(email.getValue()));
+    }
+
+    public Optional<User> findById(String id) {
+        return byEmail.values().stream()
+                .filter(u -> u.getId().equals(id))
+                .findFirst();
     }
 
     public Collection<User> findAll() {
