@@ -8,8 +8,8 @@ import java.util.UUID;
 
 public abstract class Contact {
     private final String id;
-    private final String ownerUserId;    
-    private String name;                  
+    private final String ownerUserId;     
+    private String name;                 
     private final List<PhoneNumber> phones = new ArrayList<>();
     private final List<Email> emails = new ArrayList<>();
     private final LocalDateTime createdAt;
@@ -50,6 +50,35 @@ public abstract class Contact {
     public void addEmail(Email e) {
         if (e == null) throw new IllegalArgumentException("Email cannot be null.");
         emails.add(e);
+        touch();
+    }
+
+    /** Remove phone by 0-based index. */
+    public void removePhoneAt(int index) {
+        if (index < 0 || index >= phones.size()) {
+            throw new IndexOutOfBoundsException("Invalid phone index.");
+        }
+        phones.remove(index);
+        touch();
+    }
+
+    public void removeEmailAt(int index) {
+        if (index < 0 || index >= emails.size()) {
+            throw new IndexOutOfBoundsException("Invalid email index.");
+        }
+        emails.remove(index);
+        touch();
+    }
+
+    public void replaceAllPhones(List<PhoneNumber> newPhones) {
+        phones.clear();
+        if (newPhones != null) phones.addAll(newPhones);
+        touch();
+    }
+
+    public void replaceAllEmails(List<Email> newEmails) {
+        emails.clear();
+        if (newEmails != null) emails.addAll(newEmails);
         touch();
     }
 

@@ -1,20 +1,29 @@
 /** 
- * Use Case 5: View Contact Details
+ * Use Case 6:  Edit Contact
  * 
- *   This module enables:
- *   - Listing all contacts for the logged‑in user
- *   - Selecting a specific contact to view full details
- *   - Displaying formatted information (type, name, phones, emails, timestamps)
- *   Optional enhancements:
- *   - Uppercase contact name
- *   - Masked email addresses
- *   
- *   Demonstrates:
- *   - Read only view rendering
- *   - Clean separation of display logic using ContactRenderer
- *   - Optional formatting flags (uppercase, mask emails)
- *   - Safe access to stored contact data
- *   - Polymorphic behavior (PersonContact / OrganizationContact share display logic)
+ * This module enables:
+ *	- Selecting an existing Person or Organization contact to edit
+ *	Updating core fields:
+ *	- Name (full name or organization name)
+ *	- Phone numbers (add, replace, remove with immediate validation)
+ *	- Emails (add, replace, remove with immediate validation)
+ *
+ *	Input behavior aligned with creation:
+ *	- Per entry validation for phone and email
+ *	- Reject whitespace-only inputs
+ *	- After each valid phone/email, prompt: “Add another …? (Y/n)”
+ *
+ *	Safe update flow:
+ *	- Only applies changes if inputs pass validation
+ *	- Prevents duplicate contact names per user
+ *	- Keeps timestamps consistent (updates updatedAt)
+ *
+ *	Demonstrates:
+ *	- Encapsulation & validation in domain (setter methods + value objects)
+ *	- Exception handling (ValidationException, DuplicateContactException)
+ *	- Plain OOP editing workflow (no Command/Memento; straightforward update logic)
+ *	- Defensive updates: work with in-memory entities, fail fast on invalid input
+ *	- Consistency with UC‑04 input rules (same validators for Email, PhoneNumber)
  */
 
 package com.mycontacts.app;
@@ -26,7 +35,7 @@ import com.mycontacts.domain.User;
 import com.mycontacts.exceptions.DuplicateContactException;
 import com.mycontacts.exceptions.DuplicateEmailException;
 import com.mycontacts.exceptions.IncorrectPasswordException;
-import com.mycontacts.exceptions.InvalidCredentialException; // singular
+import com.mycontacts.exceptions.InvalidCredentialException; 
 import com.mycontacts.exceptions.ValidationException;
 import com.mycontacts.repository.ContactRepository;
 import com.mycontacts.repository.UserRepository;
@@ -50,7 +59,7 @@ public class ConsoleApp {
 
         try (Scanner sc = new Scanner(System.in)) {
             boolean running = true;
-            System.out.println("=== MyContacts — UC-01..05 ===");
+            System.out.println("=== MyContacts — UC-06 ===");
 
             while (running) {
                 System.out.println("\nMenu:");
@@ -62,8 +71,9 @@ public class ConsoleApp {
                 System.out.println(" 6) Contact: Create Organization");
                 System.out.println(" 7) View Contacts (names only)");
                 System.out.println(" 8) View Contact Details");
-                System.out.println(" 9) Logout");
-                System.out.println("10) Exit");
+                System.out.println(" 9) Edit Contact");
+                System.out.println("10) Logout");
+                System.out.println("11) Exit");
                 System.out.print("Choose: ");
                 String choice = sc.nextLine().trim();
 
@@ -74,10 +84,11 @@ public class ConsoleApp {
                     case "4": handleChangePassword(sc, userService); break;
                     case "5": handleCreatePerson(sc, contactService); break;
                     case "6": handleCreateOrganization(sc, contactService); break;
-                    case "7": handleListMyContactsNamesOnly(contactRepo); break;     
-                    case "8": handleViewContactDetails(sc, contactRepo); break;       
-                    case "9": currentUser = null; System.out.println("Logged out."); break;
-                    case "10": running = false; break;
+                    case "7": handleListMyContactsNamesOnly(contactRepo); break; 
+                    case "8": handleViewContactDetails(sc, contactRepo); break;   
+                    case "9": handleEditContact(sc, contactRepo, contactService); break; 
+                    case "10": currentUser = null; System.out.println("Logged out."); break;
+                    case "11": running = false; break;
                     default: System.out.println("Invalid choice. Try again.");
                 }
             }
@@ -92,7 +103,7 @@ public class ConsoleApp {
         System.out.print("Email: ");
         String email = sc.nextLine();
         try {
-            new Email(email); // early email validation (blank/invalid aborts)
+            new Email(email); 
         } catch (IllegalArgumentException e) {
             System.out.println("Registration failed: " + e.getMessage());
             return;
@@ -188,7 +199,7 @@ public class ConsoleApp {
         List<String> emails = readEmailsForContact(sc, /* requireAtLeastOne = */ true);
 
         try {
-            var person = contactService.createPerson(currentUser.getId(), name, phones, emails);
+            Contact person = contactService.createPerson(currentUser.getId(), name, phones, emails);
             System.out.println("\nCreated contact:");
             System.out.println(person);
         } catch (ValidationException | DuplicateContactException e) {
@@ -208,7 +219,7 @@ public class ConsoleApp {
         List<String> emails = readEmailsForContact(sc, /* requireAtLeastOne = */ true);
 
         try {
-            var org = contactService.createOrganization(currentUser.getId(), name, phones, emails);
+            Contact org = contactService.createOrganization(currentUser.getId(), name, phones, emails);
             System.out.println("\nCreated contact:");
             System.out.println(org);
         } catch (ValidationException | DuplicateContactException e) {
@@ -221,13 +232,13 @@ public class ConsoleApp {
     private static void handleListMyContactsNamesOnly(ContactRepository contactRepo) {
         if (!ensureLoggedIn()) return;
         System.out.println("\n--- My Contacts (Names Only) ---");
-        var contacts = contactRepo.findAllByOwner(currentUser.getId());
+        List<Contact> contacts = contactRepo.findAllByOwner(currentUser.getId());
         if (contacts.isEmpty()) {
             System.out.println("(no contacts yet)");
             return;
         }
         for (int i = 0; i < contacts.size(); i++) {
-            var c = contacts.get(i);
+            Contact c = contacts.get(i);
             System.out.printf("%d) %s%n", i + 1, c.getName());
         }
     }
@@ -236,7 +247,7 @@ public class ConsoleApp {
         if (!ensureLoggedIn()) return;
         System.out.println("\n--- View Contact Details ---");
 
-        var contacts = contactRepo.findAllByOwner(currentUser.getId());
+        List<Contact> contacts = contactRepo.findAllByOwner(currentUser.getId());
         if (contacts.isEmpty()) {
             System.out.println("(no contacts yet)");
             return;
@@ -247,21 +258,7 @@ public class ConsoleApp {
             System.out.printf("%d) [%s] %s%n", i + 1, c.getType(), c.getName());
         }
 
-        int idx = -1;
-        while (true) {
-            System.out.print("Choose contact number: ");
-            String s = sc.nextLine().trim();
-            try {
-                idx = Integer.parseInt(s);
-                if (idx < 1 || idx > contacts.size()) {
-                    System.out.println("Please enter a number between 1 and " + contacts.size() + ".");
-                    continue;
-                }
-                break;
-            } catch (NumberFormatException e) {
-                System.out.println("Please enter a valid number.");
-            }
-        }
+        int idx = askIndex(sc, "Choose contact number: ", contacts.size());
         Contact chosen = contacts.get(idx - 1);
 
         boolean uppercase = askYesNo(sc, "Uppercase name? (y/N): ", /* defaultYes= */ false);
@@ -270,6 +267,116 @@ public class ConsoleApp {
         String rendered = ContactRenderer.render(chosen, uppercase, maskEmails);
         System.out.println();
         System.out.println(rendered);
+    }
+
+    private static void handleEditContact(Scanner sc, ContactRepository contactRepo, ContactService contactService) {
+        if (!ensureLoggedIn()) return;
+        System.out.println("\n--- Edit Contact ---");
+
+        List<Contact> contacts = contactRepo.findAllByOwner(currentUser.getId());
+        if (contacts.isEmpty()) {
+            System.out.println("(no contacts yet)");
+            return;
+        }
+
+        for (int i = 0; i < contacts.size(); i++) {
+            Contact c = contacts.get(i);
+            System.out.printf("%d) [%s] %s%n", i + 1, c.getType(), c.getName());
+        }
+
+        int idx = askIndex(sc, "Choose contact number to edit: ", contacts.size());
+        Contact chosen = contacts.get(idx - 1);
+        String contactId = chosen.getId();
+        String ownerId = currentUser.getId();
+
+        boolean editing = true;
+        while (editing) {
+            System.out.println("\nEdit Menu for: " + chosen.getName());
+            System.out.println(" 1) Change name");
+            System.out.println(" 2) Add phone");
+            System.out.println(" 3) Remove phone");
+            System.out.println(" 4) Add email");
+            System.out.println(" 5) Remove email");
+            System.out.println(" 6) Replace all phones");
+            System.out.println(" 7) Replace all emails");
+            System.out.println(" 8) Back");
+            System.out.print("Choose: ");
+            String choice = sc.nextLine().trim();
+
+            try {
+                switch (choice) {
+                    case "1": { 
+                        String newName = readRequiredNonBlank(sc, "New name: ");
+                        contactService.updateContactName(ownerId, contactId, newName);
+                        System.out.println("Name updated.");
+                        break;
+                    }
+                    case "2": { 
+                        String phone = readRequiredNonBlank(sc, "Phone to add: ");
+                        contactService.addPhone(ownerId, contactId, phone);
+                        System.out.println("Phone added.");
+                        break;
+                    }
+                    case "3": { 
+                        List<com.mycontacts.domain.PhoneNumber> phones = chosen.getPhones();
+                        if (phones.isEmpty()) {
+                            System.out.println("No phones to remove.");
+                            break;
+                        }
+                        for (int i = 0; i < phones.size(); i++) {
+                            System.out.printf("%d) %s%n", i + 1, phones.get(i).getDisplay());
+                        }
+                        int pIdx = askIndex(sc, "Choose phone number to remove: ", phones.size());
+                        contactService.removePhone(ownerId, contactId, pIdx - 1);
+                        System.out.println("Phone removed.");
+                        break;
+                    }
+                    case "4": { 
+                        String email = readRequiredNonBlank(sc, "Email to add: ");
+                        contactService.addEmail(ownerId, contactId, email);
+                        System.out.println("Email added.");
+                        break;
+                    }
+                    case "5": { 
+                        List<com.mycontacts.domain.Email> emails = chosen.getEmails();
+                        if (emails.isEmpty()) {
+                            System.out.println("No emails to remove.");
+                            break;
+                        }
+                        for (int i = 0; i < emails.size(); i++) {
+                            System.out.printf("%d) %s%n", i + 1, emails.get(i).getValue());
+                        }
+                        int eIdx = askIndex(sc, "Choose email to remove: ", emails.size());
+                        contactService.removeEmail(ownerId, contactId, eIdx - 1);
+                        System.out.println("Email removed.");
+                        break;
+                    }
+                    case "6": {
+                        System.out.println("Enter new phone numbers:");
+                        List<String> newPhones = readPhonesForContact(sc, /* requireAtLeastOne = */ true);
+                        contactService.replacePhones(ownerId, contactId, newPhones, true);
+                        System.out.println("Phones replaced.");
+                        break;
+                    }
+                    case "7": { 
+                        System.out.println("Enter new emails:");
+                        List<String> newEmails = readEmailsForContact(sc, /* requireAtLeastOne = */ true);
+                        contactService.replaceEmails(ownerId, contactId, newEmails, true);
+                        System.out.println("Emails replaced.");
+                        break;
+                    }
+                    case "8":
+                        editing = false;
+                        break;
+                    default:
+                        System.out.println("Invalid choice. Try again.");
+                }
+            } catch (DuplicateContactException | ValidationException e) {
+                System.out.println("Edit failed: " + e.getMessage());
+            } catch (Exception e) {
+                System.out.println("Unexpected error: " + e.getMessage());
+            }
+        }
     }
 
     private static String readRequiredNonBlank(Scanner sc, String prompt) {
@@ -352,6 +459,23 @@ public class ConsoleApp {
             if (c == 'y') return true;
             if (c == 'n') return false;
             System.out.println("Please answer with 'y' or 'n'.");
+        }
+    }
+
+    private static int askIndex(Scanner sc, String prompt, int maxInclusive) {
+        while (true) {
+            System.out.print(prompt);
+            String s = sc.nextLine().trim();
+            try {
+                int idx = Integer.parseInt(s);
+                if (idx < 1 || idx > maxInclusive) {
+                    System.out.println("Please enter a number between 1 and " + maxInclusive + ".");
+                    continue;
+                }
+                return idx;
+            } catch (NumberFormatException e) {
+                System.out.println("Please enter a valid number.");
+            }
         }
     }
 
