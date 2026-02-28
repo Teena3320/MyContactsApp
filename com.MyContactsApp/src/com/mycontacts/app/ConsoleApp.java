@@ -1,29 +1,30 @@
 /** 
- * Use Case 6:  Edit Contact
+ * Use Case 7: Delete Contact
  * 
- * This module enables:
- *	- Selecting an existing Person or Organization contact to edit
- *	Updating core fields:
- *	- Name (full name or organization name)
- *	- Phone numbers (add, replace, remove with immediate validation)
- *	- Emails (add, replace, remove with immediate validation)
- *
- *	Input behavior aligned with creation:
- *	- Per entry validation for phone and email
- *	- Reject whitespace-only inputs
- *	- After each valid phone/email, prompt: “Add another …? (Y/n)”
- *
- *	Safe update flow:
- *	- Only applies changes if inputs pass validation
- *	- Prevents duplicate contact names per user
- *	- Keeps timestamps consistent (updates updatedAt)
- *
- *	Demonstrates:
- *	- Encapsulation & validation in domain (setter methods + value objects)
- *	- Exception handling (ValidationException, DuplicateContactException)
- *	- Plain OOP editing workflow (no Command/Memento; straightforward update logic)
- *	- Defensive updates: work with in-memory entities, fail fast on invalid input
- *	- Consistency with UC‑04 input rules (same validators for Email, PhoneNumber)
+ * Supports two deletion modes:
+ * - Soft Delete
+ * - Marks contact as “deleted”
+ * Hidden from:
+ * - View names
+ * - View details
+ * 
+ * Data preserved internally (recoverable if needed)
+ * Hard Delete
+ * Permanently removes the contact from the repository
+ * 
+ * UI flow:
+ * - Choose a contact
+ * Choose delete type:
+ * 1) Soft Delete
+ * 2) Hard Delete
+ * 3) Cancel
+ * 
+ * Demonstrates:
+ * - Entity lifecycle management
+ * - Soft vs hard deletion
+ * - Repository update logic
+ * - Exception handling for invalid deletions
+ * 
  */
 
 package com.mycontacts.app;
@@ -59,7 +60,7 @@ public class ConsoleApp {
 
         try (Scanner sc = new Scanner(System.in)) {
             boolean running = true;
-            System.out.println("=== MyContacts — UC-06 ===");
+            System.out.println("=== MyContacts — UC-07 ===");
 
             while (running) {
                 System.out.println("\nMenu:");
@@ -72,8 +73,9 @@ public class ConsoleApp {
                 System.out.println(" 7) View Contacts (names only)");
                 System.out.println(" 8) View Contact Details");
                 System.out.println(" 9) Edit Contact");
-                System.out.println("10) Logout");
-                System.out.println("11) Exit");
+                System.out.println("10) Delete Contact");
+                System.out.println("11) Logout");
+                System.out.println("12) Exit");
                 System.out.print("Choose: ");
                 String choice = sc.nextLine().trim();
 
@@ -86,9 +88,10 @@ public class ConsoleApp {
                     case "6": handleCreateOrganization(sc, contactService); break;
                     case "7": handleListMyContactsNamesOnly(contactRepo); break; 
                     case "8": handleViewContactDetails(sc, contactRepo); break;   
-                    case "9": handleEditContact(sc, contactRepo, contactService); break; 
-                    case "10": currentUser = null; System.out.println("Logged out."); break;
-                    case "11": running = false; break;
+                    case "9": handleEditContact(sc, contactRepo, contactService); break;
+                    case "10": handleDeleteContact(sc, contactRepo, contactService); break;
+                    case "11": currentUser = null; System.out.println("Logged out."); break;
+                    case "12": running = false; break;
                     default: System.out.println("Invalid choice. Try again.");
                 }
             }
@@ -279,6 +282,7 @@ public class ConsoleApp {
             return;
         }
 
+        // List with indices
         for (int i = 0; i < contacts.size(); i++) {
             Contact c = contacts.get(i);
             System.out.printf("%d) [%s] %s%n", i + 1, c.getType(), c.getName());
@@ -305,20 +309,20 @@ public class ConsoleApp {
 
             try {
                 switch (choice) {
-                    case "1": { 
+                    case "1": { // Change name
                         String newName = readRequiredNonBlank(sc, "New name: ");
                         contactService.updateContactName(ownerId, contactId, newName);
                         System.out.println("Name updated.");
                         break;
                     }
-                    case "2": { 
+                    case "2": { // Add phone
                         String phone = readRequiredNonBlank(sc, "Phone to add: ");
                         contactService.addPhone(ownerId, contactId, phone);
                         System.out.println("Phone added.");
                         break;
                     }
-                    case "3": { 
-                        List<com.mycontacts.domain.PhoneNumber> phones = chosen.getPhones();
+                    case "3": { // Remove phone
+                        List<PhoneNumber> phones = chosen.getPhones();
                         if (phones.isEmpty()) {
                             System.out.println("No phones to remove.");
                             break;
@@ -331,14 +335,14 @@ public class ConsoleApp {
                         System.out.println("Phone removed.");
                         break;
                     }
-                    case "4": { 
+                    case "4": { // Add email
                         String email = readRequiredNonBlank(sc, "Email to add: ");
                         contactService.addEmail(ownerId, contactId, email);
                         System.out.println("Email added.");
                         break;
                     }
-                    case "5": { 
-                        List<com.mycontacts.domain.Email> emails = chosen.getEmails();
+                    case "5": { // Remove email
+                        List<Email> emails = chosen.getEmails();
                         if (emails.isEmpty()) {
                             System.out.println("No emails to remove.");
                             break;
@@ -351,14 +355,14 @@ public class ConsoleApp {
                         System.out.println("Email removed.");
                         break;
                     }
-                    case "6": {
+                    case "6": { // Replace all phones (at least one required)
                         System.out.println("Enter new phone numbers:");
                         List<String> newPhones = readPhonesForContact(sc, /* requireAtLeastOne = */ true);
                         contactService.replacePhones(ownerId, contactId, newPhones, true);
                         System.out.println("Phones replaced.");
                         break;
                     }
-                    case "7": { 
+                    case "7": { // Replace all emails (at least one required)
                         System.out.println("Enter new emails:");
                         List<String> newEmails = readEmailsForContact(sc, /* requireAtLeastOne = */ true);
                         contactService.replaceEmails(ownerId, contactId, newEmails, true);
@@ -379,6 +383,72 @@ public class ConsoleApp {
         }
     }
 
+    // ===== UC-07: Delete Contact =====
+    private static void handleDeleteContact(Scanner sc, ContactRepository contactRepo, ContactService contactService) {
+        if (!ensureLoggedIn()) return;
+        System.out.println("\n--- Delete Contact ---");
+
+        List<Contact> contacts = contactRepo.findAllByOwner(currentUser.getId());
+        if (contacts.isEmpty()) {
+            System.out.println("(no contacts yet)");
+            return;
+        }
+
+        for (int i = 0; i < contacts.size(); i++) {
+            Contact c = contacts.get(i);
+            System.out.printf("%d) [%s] %s%n", i + 1, c.getType(), c.getName());
+        }
+
+        int idx = askIndex(sc, "Choose contact number to delete: ", contacts.size());
+        Contact chosen = contacts.get(idx - 1);
+        String ownerId = currentUser.getId();
+        String contactId = chosen.getId();
+
+        System.out.println("\nDelete Type:");
+        System.out.println(" 1) Soft delete (hide contact, can be kept internally)");
+        System.out.println(" 2) Hard delete (permanent removal)");
+        System.out.println(" 3) Cancel");
+        System.out.print("Choose: ");
+        String deleteChoice = sc.nextLine().trim();
+
+        try {
+            switch (deleteChoice) {
+                case "1": {
+                    boolean ok = askYesNo(sc,
+                            "Are you sure you want to SOFT delete '" + chosen.getName() + "'? (y/N): ",
+                            /* defaultYes= */ false);
+                    if (!ok) { System.out.println("Cancelled."); return; }
+                    // Soft delete: mark entity as deleted (hidden from lists)
+                    contactService.softDelete(ownerId, contactId);
+                    System.out.println("Contact softly deleted.");
+                    break;
+                }
+                case "2": {
+                    boolean ok = askYesNo(sc,
+                            "This will PERMANENTLY remove '" + chosen.getName() + "'. Are you sure? (y/N): ",
+                            /* defaultYes= */ false);
+                    if (!ok) { System.out.println("Cancelled."); return; }
+                    // Hard delete: remove from repository
+                    contactService.hardDelete(ownerId, contactId);
+                    System.out.println("Contact permanently removed.");
+                    break;
+                }
+                case "3":
+                    System.out.println("Cancelled.");
+                    return;
+                default:
+                    System.out.println("Invalid choice. Cancelled.");
+            }
+        } catch (ValidationException e) {
+            System.out.println("Delete failed: " + e.getMessage());
+        } catch (Exception e) {
+            System.out.println("Unexpected error: " + e.getMessage());
+        }
+    }
+
+    // ===== Helpers =====
+
+    // Re-prompt until a non-blank string is entered; trims before returning.
     private static String readRequiredNonBlank(Scanner sc, String prompt) {
         while (true) {
             System.out.print(prompt);
@@ -390,6 +460,15 @@ public class ConsoleApp {
         }
     }
 
+    /**
+     * Collect one or more valid phone numbers for a contact.
+     * - Validates each entry immediately using PhoneNumber value object.
+     * - Rejects whitespace-only input.
+     * - After each valid phone, asks "Add another number? (Y/n): "
+     *   • If user enters 'n' or 'N' → finishes.
+     *   • Any other input (including Enter) → continue asking.
+     * - If requireAtLeastOne == true, keeps asking until at least one valid phone is provided.
+     */
     private static List<String> readPhonesForContact(Scanner sc, boolean requireAtLeastOne) {
         List<String> phones = new ArrayList<>();
         while (true) {
@@ -419,6 +498,15 @@ public class ConsoleApp {
         }
     }
 
+    /**
+     * Collect one or more valid emails for a contact.
+     * - Validates each entry immediately using Email value object.
+     * - Rejects whitespace-only input.
+     * - After each valid email, asks "Add another email? (Y/n): "
+     *   • If user enters 'n' or 'N' → finishes.
+     *   • Any other input (including Enter) → continue asking.
+     * - If requireAtLeastOne == true, keeps asking until at least one valid email is provided.
+     */
     private static List<String> readEmailsForContact(Scanner sc, boolean requireAtLeastOne) {
         List<String> emails = new ArrayList<>();
         while (true) {
@@ -448,6 +536,7 @@ public class ConsoleApp {
         }
     }
 
+    /** Asks a Y/n question; defaultYes controls Enter behavior. Returns true for Yes. */
     private static boolean askYesNo(Scanner sc, String prompt, boolean defaultYes) {
         while (true) {
             System.out.print(prompt);
@@ -462,6 +551,7 @@ public class ConsoleApp {
         }
     }
 
+    /** Ask for a 1..N index with validation. */
     private static int askIndex(Scanner sc, String prompt, int maxInclusive) {
         while (true) {
             System.out.print(prompt);
