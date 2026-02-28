@@ -1,14 +1,20 @@
-/**
- * Use Case 4: Create Contact
- *
- * This module enables:
- * - Creating Person or Organization contacts
- * - Adding multiple phone numbers and emails with validation
- *
- * Demonstrates:
- * - Inheritance (Contact → Person/Organization)
- * - Composition (Contact has PhoneNumber, Email)
- * - Exception handling (Validation, Duplicate contact)
+/** 
+ * Use Case 5: View Contact Details
+ * 
+ *   This module enables:
+ *   - Listing all contacts for the logged‑in user
+ *   - Selecting a specific contact to view full details
+ *   - Displaying formatted information (type, name, phones, emails, timestamps)
+ *   Optional enhancements:
+ *   - Uppercase contact name
+ *   - Masked email addresses
+ *   
+ *   Demonstrates:
+ *   - Read only view rendering
+ *   - Clean separation of display logic using ContactRenderer
+ *   - Optional formatting flags (uppercase, mask emails)
+ *   - Safe access to stored contact data
+ *   - Polymorphic behavior (PersonContact / OrganizationContact share display logic)
  */
 
 package com.mycontacts.app;
@@ -20,12 +26,13 @@ import com.mycontacts.domain.User;
 import com.mycontacts.exceptions.DuplicateContactException;
 import com.mycontacts.exceptions.DuplicateEmailException;
 import com.mycontacts.exceptions.IncorrectPasswordException;
-import com.mycontacts.exceptions.InvalidCredentialException;
+import com.mycontacts.exceptions.InvalidCredentialException; // singular
 import com.mycontacts.exceptions.ValidationException;
 import com.mycontacts.repository.ContactRepository;
 import com.mycontacts.repository.UserRepository;
 import com.mycontacts.service.ContactService;
 import com.mycontacts.service.UserService;
+import com.mycontacts.view.ContactRenderer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -43,7 +50,7 @@ public class ConsoleApp {
 
         try (Scanner sc = new Scanner(System.in)) {
             boolean running = true;
-            System.out.println("=== MyContacts — UC-04 ===");
+            System.out.println("=== MyContacts — UC-01..05 ===");
 
             while (running) {
                 System.out.println("\nMenu:");
@@ -53,9 +60,10 @@ public class ConsoleApp {
                 System.out.println(" 4) Profile: Change Password");
                 System.out.println(" 5) Contact: Create Person");
                 System.out.println(" 6) Contact: Create Organization");
-                System.out.println(" 7) List My Contacts");
-                System.out.println(" 8) Logout");
-                System.out.println(" 9) Exit");
+                System.out.println(" 7) View Contacts (names only)");
+                System.out.println(" 8) View Contact Details");
+                System.out.println(" 9) Logout");
+                System.out.println("10) Exit");
                 System.out.print("Choose: ");
                 String choice = sc.nextLine().trim();
 
@@ -66,9 +74,10 @@ public class ConsoleApp {
                     case "4": handleChangePassword(sc, userService); break;
                     case "5": handleCreatePerson(sc, contactService); break;
                     case "6": handleCreateOrganization(sc, contactService); break;
-                    case "7": handleListMyContacts(contactRepo); break;
-                    case "8": currentUser = null; System.out.println("Logged out."); break;
-                    case "9": running = false; break;
+                    case "7": handleListMyContactsNamesOnly(contactRepo); break;     
+                    case "8": handleViewContactDetails(sc, contactRepo); break;       
+                    case "9": currentUser = null; System.out.println("Logged out."); break;
+                    case "10": running = false; break;
                     default: System.out.println("Invalid choice. Try again.");
                 }
             }
@@ -83,7 +92,7 @@ public class ConsoleApp {
         System.out.print("Email: ");
         String email = sc.nextLine();
         try {
-            new Email(email); 
+            new Email(email); // early email validation (blank/invalid aborts)
         } catch (IllegalArgumentException e) {
             System.out.println("Registration failed: " + e.getMessage());
             return;
@@ -115,7 +124,7 @@ public class ConsoleApp {
         System.out.print("Email: ");
         String email = sc.nextLine();
         try {
-            new Email(email); // early email validation
+            new Email(email); 
         } catch (IllegalArgumentException e) {
             System.out.println("Login failed: " + e.getMessage());
             return;
@@ -209,15 +218,58 @@ public class ConsoleApp {
         }
     }
 
-    private static void handleListMyContacts(ContactRepository contactRepo) {
+    private static void handleListMyContactsNamesOnly(ContactRepository contactRepo) {
         if (!ensureLoggedIn()) return;
-        System.out.println("\n--- My Contacts ---");
+        System.out.println("\n--- My Contacts (Names Only) ---");
         var contacts = contactRepo.findAllByOwner(currentUser.getId());
         if (contacts.isEmpty()) {
             System.out.println("(no contacts yet)");
             return;
         }
-        for (Contact c : contacts) System.out.println(c);
+        for (int i = 0; i < contacts.size(); i++) {
+            var c = contacts.get(i);
+            System.out.printf("%d) %s%n", i + 1, c.getName());
+        }
+    }
+
+    private static void handleViewContactDetails(Scanner sc, ContactRepository contactRepo) {
+        if (!ensureLoggedIn()) return;
+        System.out.println("\n--- View Contact Details ---");
+
+        var contacts = contactRepo.findAllByOwner(currentUser.getId());
+        if (contacts.isEmpty()) {
+            System.out.println("(no contacts yet)");
+            return;
+        }
+
+        for (int i = 0; i < contacts.size(); i++) {
+            Contact c = contacts.get(i);
+            System.out.printf("%d) [%s] %s%n", i + 1, c.getType(), c.getName());
+        }
+
+        int idx = -1;
+        while (true) {
+            System.out.print("Choose contact number: ");
+            String s = sc.nextLine().trim();
+            try {
+                idx = Integer.parseInt(s);
+                if (idx < 1 || idx > contacts.size()) {
+                    System.out.println("Please enter a number between 1 and " + contacts.size() + ".");
+                    continue;
+                }
+                break;
+            } catch (NumberFormatException e) {
+                System.out.println("Please enter a valid number.");
+            }
+        }
+        Contact chosen = contacts.get(idx - 1);
+
+        boolean uppercase = askYesNo(sc, "Uppercase name? (y/N): ", /* defaultYes= */ false);
+        boolean maskEmails = askYesNo(sc, "Mask emails? (Y/n): ", /* defaultYes= */ true);
+
+        String rendered = ContactRenderer.render(chosen, uppercase, maskEmails);
+        System.out.println();
+        System.out.println(rendered);
     }
 
     private static String readRequiredNonBlank(Scanner sc, String prompt) {
@@ -243,32 +295,19 @@ public class ConsoleApp {
             }
 
             try {
-                new PhoneNumber(raw); 
+                new PhoneNumber(raw);
                 phones.add(raw.trim());
             } catch (IllegalArgumentException e) {
                 System.out.println("Invalid phone: " + e.getMessage());
                 continue;
             }
 
-            while (true) {
-                System.out.print("Add another number? (Y/n): ");
-                String ans = sc.nextLine();
-                if (ans == null || ans.isBlank()) {
-                    // Default = yes (keep adding)
-                    break; 
+            if (!askYesNo(sc, "Add another number? (Y/n): ", /* defaultYes= */ true)) {
+                if (requireAtLeastOne && phones.isEmpty()) {
+                    System.out.println("At least one phone number is required.");
+                    continue;
                 }
-                char c = ans.trim().charAt(0);
-                if (c == 'n' || c == 'N') {
-                    if (requireAtLeastOne && phones.isEmpty()) {
-                        System.out.println("At least one phone number is required.");
-                        break;
-                    }
-                    return phones;
-                } else if (c == 'y' || c == 'Y') {
-                    break; 
-                } else {
-                    System.out.println("Please answer with 'Y' to add more or 'n' to stop.");
-                }
+                return phones;
             }
         }
     }
@@ -285,32 +324,34 @@ public class ConsoleApp {
             }
 
             try {
-                new Email(raw); 
+                new Email(raw);
                 emails.add(raw.trim());
             } catch (IllegalArgumentException e) {
                 System.out.println("Invalid email: " + e.getMessage());
                 continue;
             }
 
-            while (true) {
-                System.out.print("Add another email? (Y/n): ");
-                String ans = sc.nextLine();
-                if (ans == null || ans.isBlank()) {
-                    break; 
+            if (!askYesNo(sc, "Add another email? (Y/n): ", /* defaultYes= */ true)) {
+                if (requireAtLeastOne && emails.isEmpty()) {
+                    System.out.println("At least one email is required.");
+                    continue;
                 }
-                char c = ans.trim().charAt(0);
-                if (c == 'n' || c == 'N') {
-                    if (requireAtLeastOne && emails.isEmpty()) {
-                        System.out.println("At least one email is required.");
-                        break;
-                    }
-                    return emails;
-                } else if (c == 'y' || c == 'Y') {
-                    break; 
-                } else {
-                    System.out.println("Please answer with 'Y' to add more or 'n' to stop.");
-                }
+                return emails;
             }
+        }
+    }
+
+    private static boolean askYesNo(Scanner sc, String prompt, boolean defaultYes) {
+        while (true) {
+            System.out.print(prompt);
+            String ans = sc.nextLine();
+            if (ans == null || ans.isBlank()) {
+                return defaultYes;
+            }
+            char c = Character.toLowerCase(ans.trim().charAt(0));
+            if (c == 'y') return true;
+            if (c == 'n') return false;
+            System.out.println("Please answer with 'y' or 'n'.");
         }
     }
 
