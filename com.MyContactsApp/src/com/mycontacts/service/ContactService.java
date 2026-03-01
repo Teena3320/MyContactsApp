@@ -7,6 +7,7 @@ import com.mycontacts.repository.ContactRepository;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class ContactService {
     private final ContactRepository contactRepo;
@@ -15,13 +16,14 @@ public class ContactService {
         this.contactRepo = contactRepo;
     }
 
-    // ===== UC-04: Create (unchanged) =====
+    // ===== UC-04: Create Contacts =====
 
     public PersonContact createPerson(String ownerUserId,
                                       String fullName,
                                       List<String> phoneInputs,
                                       List<String> emailInputs)
             throws ValidationException, DuplicateContactException {
+
         validateOwner(ownerUserId);
         if (fullName == null || fullName.isBlank())
             throw new ValidationException("Name cannot be blank.");
@@ -43,6 +45,7 @@ public class ContactService {
                                                   List<String> phoneInputs,
                                                   List<String> emailInputs)
             throws ValidationException, DuplicateContactException {
+
         validateOwner(ownerUserId);
         if (orgName == null || orgName.isBlank())
             throw new ValidationException("Organization name cannot be blank.");
@@ -59,16 +62,18 @@ public class ContactService {
         return contact;
     }
 
-    // ===== UC-06: Edit (unchanged from your last version) =====
+    // ===== UC-06: Edit Contact =====
 
     public void updateContactName(String ownerUserId, String contactId, String newName)
             throws ValidationException, DuplicateContactException {
         validateOwner(ownerUserId);
-        if (newName == null || newName.isBlank()) throw new ValidationException("Name cannot be blank.");
+        if (newName == null || newName.isBlank()) {
+            throw new ValidationException("Name cannot be blank.");
+        }
         Contact c = getOwnedContactOrThrow(ownerUserId, contactId);
         String trimmed = newName.trim();
-        if (!c.getName().equalsIgnoreCase(trimmed) &&
-            contactRepo.existsByOwnerAndName(ownerUserId, trimmed)) {
+        if (!c.getName().equalsIgnoreCase(trimmed)
+                && contactRepo.existsByOwnerAndName(ownerUserId, trimmed)) {
             throw new DuplicateContactException("Another contact with this name already exists.");
         }
         c.setName(trimmed);
@@ -76,21 +81,29 @@ public class ContactService {
 
     public void addPhone(String ownerUserId, String contactId, String phoneRaw) throws ValidationException {
         validateOwner(ownerUserId);
-        if (phoneRaw == null || phoneRaw.trim().isEmpty()) throw new ValidationException("Phone cannot be blank.");
+        if (phoneRaw == null || phoneRaw.trim().isEmpty()) {
+            throw new ValidationException("Phone cannot be blank.");
+        }
         Contact c = getOwnedContactOrThrow(ownerUserId, contactId);
-        try { c.addPhone(new PhoneNumber(phoneRaw)); }
-        catch (IllegalArgumentException e) { throw new ValidationException("Invalid phone: " + e.getMessage()); }
+        try {
+            c.addPhone(new PhoneNumber(phoneRaw));
+        } catch (IllegalArgumentException e) {
+            throw new ValidationException("Invalid phone: " + e.getMessage());
+        }
     }
 
     public void removePhone(String ownerUserId, String contactId, int index) throws ValidationException {
         validateOwner(ownerUserId);
         Contact c = getOwnedContactOrThrow(ownerUserId, contactId);
-        try { c.removePhoneAt(index); }
-        catch (IndexOutOfBoundsException e) { throw new ValidationException("Invalid phone index."); }
+        try {
+            c.removePhoneAt(index);
+        } catch (IndexOutOfBoundsException e) {
+            throw new ValidationException("Invalid phone index.");
+        }
     }
 
-    public void replacePhones(String ownerUserId, String contactId, List<String> phoneInputs,
-                              boolean requireAtLeastOne) throws ValidationException {
+    public void replacePhones(String ownerUserId, String contactId,
+                              List<String> phoneInputs, boolean requireAtLeastOne) throws ValidationException {
         validateOwner(ownerUserId);
         Contact c = getOwnedContactOrThrow(ownerUserId, contactId);
         List<PhoneNumber> list = new ArrayList<>();
@@ -101,28 +114,40 @@ public class ContactService {
                     list.add(new PhoneNumber(raw));
                 }
             }
-        } catch (IllegalArgumentException e) { throw new ValidationException("Invalid phone: " + e.getMessage()); }
-        if (requireAtLeastOne && list.isEmpty()) throw new ValidationException("At least one phone number is required.");
+        } catch (IllegalArgumentException e) {
+            throw new ValidationException("Invalid phone: " + e.getMessage());
+        }
+        if (requireAtLeastOne && list.isEmpty()) {
+            throw new ValidationException("At least one phone number is required.");
+        }
         c.replaceAllPhones(list);
     }
 
     public void addEmail(String ownerUserId, String contactId, String emailRaw) throws ValidationException {
         validateOwner(ownerUserId);
-        if (emailRaw == null || emailRaw.trim().isEmpty()) throw new ValidationException("Email cannot be blank.");
+        if (emailRaw == null || emailRaw.trim().isEmpty()) {
+            throw new ValidationException("Email cannot be blank.");
+        }
         Contact c = getOwnedContactOrThrow(ownerUserId, contactId);
-        try { c.addEmail(new Email(emailRaw)); }
-        catch (IllegalArgumentException e) { throw new ValidationException("Invalid email: " + e.getMessage()); }
+        try {
+            c.addEmail(new Email(emailRaw));
+        } catch (IllegalArgumentException e) {
+            throw new ValidationException("Invalid email: " + e.getMessage());
+        }
     }
 
     public void removeEmail(String ownerUserId, String contactId, int index) throws ValidationException {
         validateOwner(ownerUserId);
         Contact c = getOwnedContactOrThrow(ownerUserId, contactId);
-        try { c.removeEmailAt(index); }
-        catch (IndexOutOfBoundsException e) { throw new ValidationException("Invalid email index."); }
+        try {
+            c.removeEmailAt(index);
+        } catch (IndexOutOfBoundsException e) {
+            throw new ValidationException("Invalid email index.");
+        }
     }
 
-    public void replaceEmails(String ownerUserId, String contactId, List<String> emailInputs,
-                              boolean requireAtLeastOne) throws ValidationException {
+    public void replaceEmails(String ownerUserId, String contactId,
+                              List<String> emailInputs, boolean requireAtLeastOne) throws ValidationException {
         validateOwner(ownerUserId);
         Contact c = getOwnedContactOrThrow(ownerUserId, contactId);
         List<Email> list = new ArrayList<>();
@@ -133,26 +158,58 @@ public class ContactService {
                     list.add(new Email(raw));
                 }
             }
-        } catch (IllegalArgumentException e) { throw new ValidationException("Invalid email: " + e.getMessage()); }
-        if (requireAtLeastOne && list.isEmpty()) throw new ValidationException("At least one email is required.");
+        } catch (IllegalArgumentException e) {
+            throw new ValidationException("Invalid email: " + e.getMessage());
+        }
+        if (requireAtLeastOne && list.isEmpty()) {
+            throw new ValidationException("At least one email is required.");
+        }
         c.replaceAllEmails(list);
     }
 
-    // ===== UC-07: Delete =====
+    // ===== UC-07: Delete Contact =====
 
-    /** Soft delete (mark as deleted). */
     public void softDelete(String ownerUserId, String contactId) throws ValidationException {
         validateOwner(ownerUserId);
         Contact c = getOwnedContactOrThrow(ownerUserId, contactId);
-        c.softDelete(); // mark deleted on entity
-        // persist updated entity state is implicit in memory
+        c.softDelete();
     }
 
-    /** Hard delete (permanently remove from store). */
     public void hardDelete(String ownerUserId, String contactId) throws ValidationException {
         validateOwner(ownerUserId);
         boolean ok = contactRepo.hardDelete(ownerUserId, contactId);
         if (!ok) throw new ValidationException("Contact not found or already removed.");
+    }
+
+    // ===== UC-08: Bulk Operations =====
+
+    public int bulkSoftDelete(String ownerUserId, List<String> contactIds) throws ValidationException {
+        validateOwner(ownerUserId);
+        if (contactIds == null || contactIds.isEmpty()) {
+            throw new ValidationException("No contacts selected.");
+        }
+        int count = 0;
+        for (String id : contactIds) {
+            Optional<Contact> opt = contactRepo.findById(ownerUserId, id);
+            if (opt.isPresent()) {
+                opt.get().softDelete();
+                count++;
+            }
+        }
+        return count;
+    }
+
+    public int bulkHardDelete(String ownerUserId, List<String> contactIds) throws ValidationException {
+        validateOwner(ownerUserId);
+        if (contactIds == null || contactIds.isEmpty()) {
+            throw new ValidationException("No contacts selected.");
+        }
+        int count = 0;
+        for (String id : contactIds) {
+            boolean removed = contactRepo.hardDelete(ownerUserId, id);
+            if (removed) count++;
+        }
+        return count;
     }
 
     // ===== helpers =====
