@@ -1,31 +1,35 @@
 /**
- * Use Case 8: Contact Groups
+ * Use Case 9: Search Contacts
  * 
  * This module enables:
- * - Creating groups for the logged‑in user
- * - Adding or removing contacts as group members
- * - Renaming existing groups
- * - Viewing group lists (names only)
- * - Viewing detailed group info (member names)
- * - Bulk deleting all group members (soft or hard delete)
+ * - Searching contacts by name, phone number, or email
+ * - Using general search for partial matches across all fields
+ * - Using field specific queries (name:, email:, phone:) for precise searching
+ * - Viewing the list of matching contacts and optionally viewing full details
  * 
  * Input behavior:
- * - Group names must be non blank
- * - Uses validated numeric selection for members
- * - Rejects whitespace-only inputs
- * - Only non deleted contacts can be added as members
+ * - Search query must be non blank
+ * - Allows flexible matching (partial, case‑insensitive)
+ * - Field prefixed queries must follow the format:
  * 
- * Safe update flow:
- * - Prevents duplicate group names per user
- * - Keeps membership consistent if contacts are deleted
- * - Bulk operations use ContactService for soft/hard delete
- * - Group stores only contact IDs to avoid stale references
+ * name:<text>
+ * email:<text>
+ * phone:<text>
+ * 
+ * Handles “no results” gracefully
+ * 
+ * Safe search flow:
+ * - Searches only non deleted contacts
+ * - Matches use safe normalization (digit extraction for phones, lowercasing for strings)
+ * - Isolated search logic inside SearchService for cleaner architecture
+ * - Results returned as a filtered list for optional detail viewing
  * 
  * Demonstrates:
- * - Encapsulation in ContactGroup
- * - Exception handling (ValidationException, DuplicateGroupException)
- * - Clean OOP workflow for create/rename/add/remove/bulk actions
- * - Consistent validation rules matching previous use cases
+ * - Clean separation of concerns (SearchService handles logic, ConsoleApp handles UI)
+ * - Encapsulation of matching rules (name, email, phone match helpers)
+ * - OOP driven filtering without modifying contact state
+ * - Java string utilities (contains(), equalsIgnoreCase()) and digit normalization
+ * - Defensive validation (ValidationException for invalid/blank queries)
  */
 
 package com.mycontacts.app;
