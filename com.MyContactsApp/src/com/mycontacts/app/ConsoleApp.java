@@ -2,7 +2,7 @@
  * Use Case 8: Contact Groups
  * 
  * This module enables:
- * - Creating groups for the logged in user
+ * - Creating groups for the logged‑in user
  * - Adding or removing contacts as group members
  * - Renaming existing groups
  * - Viewing group lists (names only)
@@ -24,7 +24,7 @@
  * Demonstrates:
  * - Encapsulation in ContactGroup
  * - Exception handling (ValidationException, DuplicateGroupException)
- * - Clean OOP workflow for create/rename/add/remove/bulk operations
+ * - Clean OOP workflow for create/rename/add/remove/bulk actions
  * - Consistent validation rules matching previous use cases
  */
 
@@ -43,6 +43,7 @@ import com.mycontacts.repository.ContactRepository;
 import com.mycontacts.repository.UserRepository;
 import com.mycontacts.service.ContactService;
 import com.mycontacts.service.ExportService;
+import com.mycontacts.service.SearchService;
 import com.mycontacts.service.UserService;
 import com.mycontacts.view.ContactRenderer;
 
@@ -61,10 +62,11 @@ public class ConsoleApp {
         UserService userService = new UserService(userRepo);
         ContactService contactService = new ContactService(contactRepo);
         ExportService exportService = new ExportService();
+        SearchService searchService = new SearchService(contactRepo); 
 
         try (Scanner sc = new Scanner(System.in)) {
             boolean running = true;
-            System.out.println("=== MyContacts — UC-08 ===");
+            System.out.println("=== MyContacts — UC-09 ===");
 
             while (running) {
                 System.out.println("\nMenu:");
@@ -78,9 +80,10 @@ public class ConsoleApp {
                 System.out.println(" 8) View Contact Details");
                 System.out.println(" 9) Edit Contact");
                 System.out.println("10) Delete Contact");
-                System.out.println("11) Bulk Operations");     
+                System.out.println("11) Bulk Operations");
                 System.out.println("12) Logout");
                 System.out.println("13) Exit");
+                System.out.println("14) Search Contacts"); 
                 System.out.print("Choose: ");
                 String choice = sc.nextLine().trim();
 
@@ -95,9 +98,10 @@ public class ConsoleApp {
                     case "8": handleViewContactDetails(sc, contactRepo); break;
                     case "9": handleEditContact(sc, contactRepo, contactService); break;
                     case "10": handleDeleteContact(sc, contactRepo, contactService); break;
-                    case "11": handleBulkOperations(sc, contactRepo, contactService, exportService); break; 
+                    case "11": handleBulkOperations(sc, contactRepo, contactService, exportService); break;
                     case "12": currentUser = null; System.out.println("Logged out."); break;
                     case "13": running = false; break;
+                    case "14": handleSearchContacts(sc, searchService, contactRepo); break;
                     default: System.out.println("Invalid choice. Try again.");
                 }
             }
@@ -105,6 +109,7 @@ public class ConsoleApp {
 
         System.out.println("Goodbye!");
     }
+
 
   //===== UC-01: Registration =====
     private static void handleRegistration(Scanner sc, UserService userService) {
@@ -461,6 +466,52 @@ public class ConsoleApp {
             System.out.println("Unexpected error: " + e.getMessage());
         }
     }
+    
+
+ // ===== UC-09: Search Contacts (NEW) =====
+     private static void handleSearchContacts(Scanner sc,
+                                              SearchService searchService,
+                                              ContactRepository contactRepo) {
+         if (!ensureLoggedIn()) return;
+         System.out.println("\n--- Search Contacts (UC-09) ---");
+         System.out.println("Tips:");
+         System.out.println(" - General:  alice");
+         System.out.println(" - By name:  name:alice");
+         System.out.println(" - By email: email:@work.com");
+         System.out.println(" - By phone: phone:212");
+         System.out.print("Enter query: ");
+         String q = sc.nextLine();
+
+         try {
+             List<Contact> results = searchService.search(currentUser.getId(), q);
+             if (results.isEmpty()) {
+                 System.out.println("(no matches)");
+                 return;
+             }
+
+             System.out.println("\nMatches:");
+             for (int i = 0; i < results.size(); i++) {
+                 Contact c = results.get(i);
+                 System.out.printf("%d) [%s] %s%n", i + 1, c.getType(), c.getName());
+             }
+
+             boolean view = askYesNo(sc, "View details of one? (Y/n): ", true);
+             if (!view) return;
+
+             int idx = askIndex(sc, "Choose match number: ", results.size());
+             Contact chosen = results.get(idx - 1);
+
+             String rendered = ContactRenderer.render(chosen, /* uppercase */ false, /* maskEmails */ false);
+             System.out.println();
+             System.out.println(rendered);
+
+         } catch (ValidationException e) {
+             System.out.println("Search failed: " + e.getMessage());
+         } catch (Exception e) {
+             System.out.println("Unexpected error: " + e.getMessage());
+         }
+     }
+
 
     // ===== Helpers (reused) =====
 
