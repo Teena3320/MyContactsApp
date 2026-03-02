@@ -1,10 +1,7 @@
 package com.mycontacts.domain;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 public abstract class Contact {
     private final String id;
@@ -21,6 +18,9 @@ public abstract class Contact {
 
     // UC-10: frequently contacted metric
     private int timesContacted = 0;
+
+    // UC-11: Tags attached to this contact (unique by Tag.id)
+    private final Set<Tag> tags = new LinkedHashSet<>();
 
     protected Contact(String ownerUserId, String name) {
         if (ownerUserId == null || ownerUserId.isBlank()) {
@@ -43,11 +43,32 @@ public abstract class Contact {
     public LocalDateTime getDeletedAt() { return deletedAt; }
 
     public int getTimesContacted() { return timesContacted; }
+    public void markContacted() { this.timesContacted++; touch(); }
 
-    /** UC-10: mark that user viewed/used this contact. */
-    public void markContacted() {
-        this.timesContacted++;
-        touch();
+    public Set<Tag> getTags() { return Collections.unmodifiableSet(tags); }
+
+    public void addTag(Tag tag) {
+        if (tag == null) throw new IllegalArgumentException("Tag cannot be null.");
+        if (!Objects.equals(tag.getOwnerUserId(), this.ownerUserId)) {
+            throw new IllegalArgumentException("Cannot add a tag from a different owner.");
+        }
+        if (tags.add(tag)) touch();
+    }
+
+    public void removeTag(Tag tag) {
+        if (tag == null) return;
+        if (tags.remove(tag)) touch();
+    }
+
+    public boolean hasTagId(String tagId) {
+        for (Tag t : tags) if (t.getId().equals(tagId)) return true;
+        return false;
+    }
+
+    public void removeTagById(String tagId) {
+        if (tagId == null) return;
+        boolean changed = tags.removeIf(t -> t.getId().equals(tagId));
+        if (changed) touch();
     }
 
     public void setName(String name) {
@@ -71,35 +92,30 @@ public abstract class Contact {
         touch();
     }
 
-    /** Remove phone by 0-based index. */
     public void removePhoneAt(int index) {
         if (index < 0 || index >= phones.size()) throw new IndexOutOfBoundsException("Invalid phone index.");
         phones.remove(index);
         touch();
     }
 
-    /** Remove email by 0-based index. */
     public void removeEmailAt(int index) {
         if (index < 0 || index >= emails.size()) throw new IndexOutOfBoundsException("Invalid email index.");
         emails.remove(index);
         touch();
     }
 
-    /** Clear and replace all phones with the provided list. */
     public void replaceAllPhones(List<PhoneNumber> newPhones) {
         phones.clear();
         if (newPhones != null) phones.addAll(newPhones);
         touch();
     }
 
-    /** Clear and replace all emails with the provided list. */
     public void replaceAllEmails(List<Email> newEmails) {
         emails.clear();
         if (newEmails != null) emails.addAll(newEmails);
         touch();
     }
 
-    /** UC-07: mark contact as softly deleted. */
     public void softDelete() {
         if (!deleted) {
             deleted = true;
@@ -110,13 +126,25 @@ public abstract class Contact {
 
     protected void touch() { this.updatedAt = LocalDateTime.now(); }
 
-    /** Contact type string for UI and logging */
     public abstract String getType();
 
     @Override
     public String toString() {
-        return "%sContact{id='%s', owner='%s', name='%s', phones=%s, emails=%s, createdAt=%s, deleted=%s, timesContacted=%d}"
+        return "%sContact{id='%s', owner='%s', name='%s', phones=%s, emails=%s, createdAt=%s, deleted=%s, timesContacted=%d, tags=%s}"
                 .formatted(getType().isEmpty() ? "" : (getType() + " "),
-                        id, ownerUserId, name, phones, emails, createdAt, deleted, timesContacted);
+                        id, ownerUserId, name, phones, emails, createdAt, deleted, timesContacted, tagNames());
+    }
+
+    private String tagNames() {
+        if (tags.isEmpty()) return "[]";
+        StringBuilder sb = new StringBuilder("[");
+        boolean first = true;
+        for (Tag t : tags) {
+            if (!first) sb.append(", ");
+            sb.append(t.getName());
+            first = false;
+        }
+        sb.append("]");
+        return sb.toString();
     }
 }
