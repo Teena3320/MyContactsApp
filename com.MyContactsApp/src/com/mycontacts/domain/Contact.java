@@ -6,14 +6,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Base Contact entity with common fields for Person and Organization contacts.
- * Owns lists of PhoneNumber and Email (composition).
- */
 public abstract class Contact {
     private final String id;
-    private final String ownerUserId;     // who owns this contact
-    private String name;                  // display name
+    private final String ownerUserId;     
+    private String name;                 
     private final List<PhoneNumber> phones = new ArrayList<>();
     private final List<Email> emails = new ArrayList<>();
     private final LocalDateTime createdAt;
@@ -22,6 +18,9 @@ public abstract class Contact {
     // UC-07: soft delete state
     private boolean deleted = false;
     private LocalDateTime deletedAt = null;
+
+    // UC-10: frequently contacted metric
+    private int timesContacted = 0;
 
     protected Contact(String ownerUserId, String name) {
         if (ownerUserId == null || ownerUserId.isBlank()) {
@@ -42,6 +41,14 @@ public abstract class Contact {
 
     public boolean isDeleted() { return deleted; }
     public LocalDateTime getDeletedAt() { return deletedAt; }
+
+    public int getTimesContacted() { return timesContacted; }
+
+    /** UC-10: mark that user viewed/used this contact. */
+    public void markContacted() {
+        this.timesContacted++;
+        touch();
+    }
 
     public void setName(String name) {
         if (name == null || name.isBlank()) throw new IllegalArgumentException("Name cannot be blank.");
@@ -108,8 +115,8 @@ public abstract class Contact {
 
     @Override
     public String toString() {
-        return "%sContact{id='%s', owner='%s', name='%s', phones=%s, emails=%s, createdAt=%s, deleted=%s}"
+        return "%sContact{id='%s', owner='%s', name='%s', phones=%s, emails=%s, createdAt=%s, deleted=%s, timesContacted=%d}"
                 .formatted(getType().isEmpty() ? "" : (getType() + " "),
-                        id, ownerUserId, name, phones, emails, createdAt, deleted);
+                        id, ownerUserId, name, phones, emails, createdAt, deleted, timesContacted);
     }
 }

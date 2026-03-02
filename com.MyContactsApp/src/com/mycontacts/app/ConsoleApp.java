@@ -1,35 +1,33 @@
 /**
- * Use Case 9: Search Contacts
- * 
- * This module enables:
- * - Searching contacts by name, phone number, or email
- * - Using general search for partial matches across all fields
- * - Using field specific queries (name:, email:, phone:) for precise searching
- * - Viewing the list of matching contacts and optionally viewing full details
+ *Use Case 10: Basic Filtering
+ *
+ *This module enables:
+ * - Filtering contacts by tag, date added, or frequency of contact
+ * - Displaying a refined list of contacts based on chosen criteria
+ * - Supporting sorted results (alphabetical, by creation date) for easier navigation
  * 
  * Input behavior:
- * - Search query must be non blank
- * - Allows flexible matching (partial, case‑insensitive)
- * - Field prefixed queries must follow the format:
+ * - User selects a filter type from a menu
+ * - Rejects invalid filter choices
+ * - Date filters must use non‑blank input (if applicable)
+ * - Filters apply only to non‑deleted contacts
  * 
- * name:<text>
- * email:<text>
- * phone:<text>
- * 
- * Handles “no results” gracefully
- * 
- * Safe search flow:
- * - Searches only non deleted contacts
- * - Matches use safe normalization (digit extraction for phones, lowercasing for strings)
- * - Isolated search logic inside SearchService for cleaner architecture
- * - Results returned as a filtered list for optional detail viewing
+ * Safe filtering flow:
+ * - Ensures filters are applied consistently and do not modify contact data
+ * - Uses comparison logic safely (dates, strings, tags)
+ * - Sorting performed using Java’s built‑in comparators
+ * - Prevents errors by ignoring contacts without required metadata (e.g., missing tags)
  * 
  * Demonstrates:
- * - Clean separation of concerns (SearchService handles logic, ConsoleApp handles UI)
- * - Encapsulation of matching rules (name, email, phone match helpers)
- * - OOP driven filtering without modifying contact state
- * - Java string utilities (contains(), equalsIgnoreCase()) and digit normalization
- * - Defensive validation (ValidationException for invalid/blank queries)
+ * - Use of simple filter interfaces or dedicated filter methods
+ * - Clean separation between filtering logic and UI display
+ * - Encapsulation of comparison logic (alphabetical, date-based)
+ * - Java collection utilities:
+ * 	Comparator
+ * 	Collections.sort()
+ *  Loop-based conditional filtering
+ *  
+ *  Consistent user experience aligned with previous use cases
  */
 
 package com.mycontacts.app;
@@ -41,16 +39,18 @@ import com.mycontacts.domain.User;
 import com.mycontacts.exceptions.DuplicateContactException;
 import com.mycontacts.exceptions.DuplicateEmailException;
 import com.mycontacts.exceptions.IncorrectPasswordException;
-import com.mycontacts.exceptions.InvalidCredentialException;
+import com.mycontacts.exceptions.InvalidCredentialException; 
 import com.mycontacts.exceptions.ValidationException;
 import com.mycontacts.repository.ContactRepository;
 import com.mycontacts.repository.UserRepository;
 import com.mycontacts.service.ContactService;
 import com.mycontacts.service.ExportService;
-import com.mycontacts.service.SearchService;
+import com.mycontacts.service.FilterService; 
+import com.mycontacts.service.SearchService; 
 import com.mycontacts.service.UserService;
 import com.mycontacts.view.ContactRenderer;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -67,10 +67,11 @@ public class ConsoleApp {
         ContactService contactService = new ContactService(contactRepo);
         ExportService exportService = new ExportService();
         SearchService searchService = new SearchService(contactRepo); 
+        FilterService filterService = new FilterService(contactRepo); // UC-10
 
         try (Scanner sc = new Scanner(System.in)) {
             boolean running = true;
-            System.out.println("=== MyContacts — UC-09 ===");
+            System.out.println("=== MyContacts — UC-10 ===");
 
             while (running) {
                 System.out.println("\nMenu:");
@@ -87,7 +88,8 @@ public class ConsoleApp {
                 System.out.println("11) Bulk Operations");
                 System.out.println("12) Logout");
                 System.out.println("13) Exit");
-                System.out.println("14) Search Contacts"); 
+                System.out.println("14) Search Contacts");
+                System.out.println("15) Filter Contacts"); // UC-10
                 System.out.print("Choose: ");
                 String choice = sc.nextLine().trim();
 
@@ -106,6 +108,7 @@ public class ConsoleApp {
                     case "12": currentUser = null; System.out.println("Logged out."); break;
                     case "13": running = false; break;
                     case "14": handleSearchContacts(sc, searchService, contactRepo); break;
+                    case "15": handleFilterContacts(sc, filterService); break; // UC-10
                     default: System.out.println("Invalid choice. Try again.");
                 }
             }
@@ -114,13 +117,14 @@ public class ConsoleApp {
         System.out.println("Goodbye!");
     }
 
-
-  //===== UC-01: Registration =====
+    // ===== UC-01: Registration =====
     private static void handleRegistration(Scanner sc, UserService userService) {
         System.out.println("\n--- Register ---");
+
         System.out.print("Email: ");
         String email = sc.nextLine();
         try { new Email(email); } catch (IllegalArgumentException e) { System.out.println("Registration failed: " + e.getMessage()); return; }
+
         String name = readRequiredNonBlank(sc, "Name: ");
 
         System.out.print("Password (min 6 chars): ");
@@ -133,17 +137,17 @@ public class ConsoleApp {
             System.out.println(u);
         } catch (ValidationException | DuplicateEmailException e) {
             System.out.println("Registration failed: " + e.getMessage());
-        } catch (Exception e) {
-            System.out.println("Unexpected error: " + e.getMessage());
-        }
+        } catch (Exception e) { System.out.println("Unexpected error: " + e.getMessage()); }
     }
 
     // ===== UC-02: Login =====
     private static void handleLogin(Scanner sc, UserService userService) {
         System.out.println("\n--- Login ---");
+
         System.out.print("Email: ");
         String email = sc.nextLine();
         try { new Email(email); } catch (IllegalArgumentException e) { System.out.println("Login failed: " + e.getMessage()); return; }
+
         System.out.print("Password: ");
         String pass = sc.nextLine();
 
@@ -153,9 +157,7 @@ public class ConsoleApp {
             System.out.println("Welcome, " + currentUser.getName() + " (" + currentUser.getEmail().getValue() + ")");
         } catch (InvalidCredentialException e) {
             System.out.println("Login failed: " + e.getMessage());
-        } catch (Exception e) {
-            System.out.println("Unexpected error: " + e.getMessage());
-        }
+        } catch (Exception e) { System.out.println("Unexpected error: " + e.getMessage()); }
     }
 
     // ===== UC-03: Update Name =====
@@ -196,7 +198,8 @@ public class ConsoleApp {
         List<String> emails = readEmailsForContact(sc, true);
         try {
             Contact person = contactService.createPerson(currentUser.getId(), name, phones, emails);
-            System.out.println("\nCreated contact:\n" + person);
+            System.out.println("\nCreated contact:");
+            System.out.println(person);
         } catch (ValidationException | DuplicateContactException e) {
             System.out.println("Creation failed: " + e.getMessage());
         } catch (Exception e) { System.out.println("Unexpected error: " + e.getMessage()); }
@@ -211,7 +214,8 @@ public class ConsoleApp {
         List<String> emails = readEmailsForContact(sc, true);
         try {
             Contact org = contactService.createOrganization(currentUser.getId(), name, phones, emails);
-            System.out.println("\nCreated contact:\n" + org);
+            System.out.println("\nCreated contact:");
+            System.out.println(org);
         } catch (ValidationException | DuplicateContactException e) {
             System.out.println("Creation failed: " + e.getMessage());
         } catch (Exception e) { System.out.println("Unexpected error: " + e.getMessage()); }
@@ -223,7 +227,10 @@ public class ConsoleApp {
         System.out.println("\n--- My Contacts (Names Only) ---");
         List<Contact> contacts = contactRepo.findAllByOwner(currentUser.getId());
         if (contacts.isEmpty()) { System.out.println("(no contacts yet)"); return; }
-        for (int i = 0; i < contacts.size(); i++) System.out.printf("%d) %s%n", i + 1, contacts.get(i).getName());
+        for (int i = 0; i < contacts.size(); i++) {
+            Contact c = contacts.get(i);
+            System.out.printf("%d) %s%n", i + 1, c.getName());
+        }
     }
 
     // ===== UC-05: View Contact Details =====
@@ -232,10 +239,16 @@ public class ConsoleApp {
         System.out.println("\n--- View Contact Details ---");
         List<Contact> contacts = contactRepo.findAllByOwner(currentUser.getId());
         if (contacts.isEmpty()) { System.out.println("(no contacts yet)"); return; }
-        for (int i = 0; i < contacts.size(); i++)
-            System.out.printf("%d) [%s] %s%n", i + 1, contacts.get(i).getType(), contacts.get(i).getName());
+        for (int i = 0; i < contacts.size(); i++) {
+            Contact c = contacts.get(i);
+            System.out.printf("%d) [%s] %s%n", i + 1, c.getType(), c.getName());
+        }
         int idx = askIndex(sc, "Choose contact number: ", contacts.size());
         Contact chosen = contacts.get(idx - 1);
+
+        // UC-10: track frequently contacted
+        chosen.markContacted();
+
         boolean uppercase = askYesNo(sc, "Uppercase name? (y/N): ", false);
         boolean maskEmails = askYesNo(sc, "Mask emails? (Y/n): ", true);
         String rendered = com.mycontacts.view.ContactRenderer.render(chosen, uppercase, maskEmails);
@@ -349,8 +362,8 @@ public class ConsoleApp {
         String contactId = chosen.getId();
 
         System.out.println("\nDelete Type:");
-        System.out.println(" 1) Soft delete (hide contact)");
-        System.out.println(" 2) Hard delete (permanent)");
+        System.out.println(" 1) Soft delete (hide contact, can be kept internally)");
+        System.out.println(" 2) Hard delete (permanent removal)");
         System.out.println(" 3) Cancel");
         System.out.print("Choose: ");
         String deleteChoice = sc.nextLine().trim();
@@ -358,11 +371,9 @@ public class ConsoleApp {
         try {
             switch (deleteChoice) {
                 case "1": {
-                    boolean ok = askYesNo(sc,
-                            "Are you sure you want to SOFT delete '" + chosen.getName() + "'? (y/N): ", false);
+                    boolean ok = askYesNo(sc, "Are you sure you want to SOFT delete '" + chosen.getName() + "'? (y/N): ", false);
                     if (!ok) { System.out.println("Cancelled."); return; }
                     contactService.softDelete(ownerId, contactId);
-                    // Optional confirmation: deleted flag/time
                     contactRepo.findById(ownerId, contactId).ifPresent(c -> {
                         System.out.println("Contact softly deleted.");
                         System.out.println("Deleted flag: " + c.isDeleted());
@@ -371,8 +382,7 @@ public class ConsoleApp {
                     break;
                 }
                 case "2": {
-                    boolean ok = askYesNo(sc,
-                            "This will PERMANENTLY remove '" + chosen.getName() + "'. Are you sure? (y/N): ", false);
+                    boolean ok = askYesNo(sc, "This will PERMANENTLY remove '" + chosen.getName() + "'. Are you sure? (y/N): ", false);
                     if (!ok) { System.out.println("Cancelled."); return; }
                     contactService.hardDelete(ownerId, contactId);
                     System.out.println("Contact permanently removed.");
@@ -396,25 +406,16 @@ public class ConsoleApp {
                                              ExportService exportService) {
         if (!ensureLoggedIn()) return;
         System.out.println("\n--- Bulk Operations (UC-08) ---");
-
         List<Contact> contacts = contactRepo.findAllByOwner(currentUser.getId());
-        if (contacts.isEmpty()) {
-            System.out.println("(no contacts yet)");
-            return;
-        }
-
+        if (contacts.isEmpty()) { System.out.println("(no contacts yet)"); return; }
         for (int i = 0; i < contacts.size(); i++) {
             Contact c = contacts.get(i);
             System.out.printf("%d) [%s] %s%n", i + 1, c.getType(), c.getName());
         }
-
         System.out.print("Select contacts (comma-separated numbers, e.g., 1,3,5): ");
         String sel = sc.nextLine().trim();
         List<Integer> indices = parseIndexList(sel, contacts.size());
-        if (indices.isEmpty()) {
-            System.out.println("No valid selections.");
-            return;
-        }
+        if (indices.isEmpty()) { System.out.println("No valid selections."); return; }
 
         List<String> selectedIds = new ArrayList<>();
         List<Contact> selectedContacts = new ArrayList<>();
@@ -470,62 +471,138 @@ public class ConsoleApp {
             System.out.println("Unexpected error: " + e.getMessage());
         }
     }
-    
 
- // ===== UC-09: Search Contacts (NEW) =====
-     private static void handleSearchContacts(Scanner sc,
-                                              SearchService searchService,
-                                              ContactRepository contactRepo) {
-         if (!ensureLoggedIn()) return;
-         System.out.println("\n--- Search Contacts (UC-09) ---");
-         System.out.println("Tips:");
-         System.out.println(" - General:  alice");
-         System.out.println(" - By name:  name:alice");
-         System.out.println(" - By email: email:@work.com");
-         System.out.println(" - By phone: phone:212");
-         System.out.print("Enter query: ");
-         String q = sc.nextLine();
+    // ===== UC-09: Search Contacts =====
+    private static void handleSearchContacts(Scanner sc,
+                                             com.mycontacts.service.SearchService searchService,
+                                             ContactRepository contactRepo) {
+        if (!ensureLoggedIn()) return;
+        System.out.println("\n--- Search Contacts (UC-09) ---");
+        System.out.println("Tips:");
+        System.out.println(" - General:  alice");
+        System.out.println(" - By name:  name:alice");
+        System.out.println(" - By email: email:@work.com");
+        System.out.println(" - By phone: phone:212");
+        System.out.print("Enter query: ");
+        String q = sc.nextLine();
 
-         try {
-             List<Contact> results = searchService.search(currentUser.getId(), q);
-             if (results.isEmpty()) {
-                 System.out.println("(no matches)");
-                 return;
-             }
+        try {
+            List<Contact> results = searchService.search(currentUser.getId(), q);
+            if (results.isEmpty()) { System.out.println("(no matches)"); return; }
+            System.out.println("\nMatches:");
+            for (int i = 0; i < results.size(); i++) {
+                Contact c = results.get(i);
+                System.out.printf("%d) [%s] %s%n", i + 1, c.getType(), c.getName());
+            }
+            boolean view = askYesNo(sc, "View details of one? (Y/n): ", true);
+            if (!view) return;
+            int idx = askIndex(sc, "Choose match number: ", results.size());
+            Contact chosen = results.get(idx - 1);
 
-             System.out.println("\nMatches:");
-             for (int i = 0; i < results.size(); i++) {
-                 Contact c = results.get(i);
-                 System.out.printf("%d) [%s] %s%n", i + 1, c.getType(), c.getName());
-             }
+            // UC-10: track frequently contacted
+            chosen.markContacted();
 
-             boolean view = askYesNo(sc, "View details of one? (Y/n): ", true);
-             if (!view) return;
+            String rendered = ContactRenderer.render(chosen, false, false);
+            System.out.println("\n" + rendered);
+        } catch (ValidationException e) {
+            System.out.println("Search failed: " + e.getMessage());
+        } catch (Exception e) { System.out.println("Unexpected error: " + e.getMessage()); }
+    }
 
-             int idx = askIndex(sc, "Choose match number: ", results.size());
-             Contact chosen = results.get(idx - 1);
+    // ===== UC-10: Filter Contacts =====
+    private static void handleFilterContacts(Scanner sc, FilterService filterService) {
+        if (!ensureLoggedIn()) return;
+        System.out.println("\n--- Filter Contacts (UC-10) ---");
+        System.out.println(" 1) Filter by Date Added (range)");
+        System.out.println(" 2) Frequently Contacted (Top N)");
+        System.out.println(" 3) Sort by Name (A→Z)");
+        System.out.println(" 4) Sort by Date (Newest first)");
+        System.out.println(" 5) Back");
+        System.out.print("Choose: ");
+        String choice = sc.nextLine().trim();
 
-             String rendered = ContactRenderer.render(chosen, /* uppercase */ false, /* maskEmails */ false);
-             System.out.println();
-             System.out.println(rendered);
+        try {
+            switch (choice) {
+                case "1": {
+                    LocalDate from = readOptionalDate(sc, "From (YYYY-MM-DD, blank for none): ");
+                    LocalDate to   = readOptionalDate(sc, "To   (YYYY-MM-DD, blank for none): ");
+                    List<Contact> res = filterService.filterByDateAdded(currentUser.getId(), from, to);
+                    printNamesOnly(res);
+                    break;
+                }
+                case "2": {
+                    System.out.print("Top N: ");
+                    String nStr = sc.nextLine().trim();
+                    int n = 5;
+                    try { n = Integer.parseInt(nStr); } catch (NumberFormatException ignore) {}
+                    if (n < 1) n = 1;
+                    List<Contact> res = filterService.topFrequentlyContacted(currentUser.getId(), n);
+                    printNamesOnlyWithCount(res);
+                    break;
+                }
+                case "3": {
+                    List<Contact> res = filterService.sortByName(currentUser.getId());
+                    printNamesOnly(res);
+                    break;
+                }
+                case "4": {
+                    List<Contact> res = filterService.sortByCreatedAt(currentUser.getId(), true);
+                    printNamesOnlyWithDate(res);
+                    break;
+                }
+                case "5":
+                    return;
+                default:
+                    System.out.println("Invalid choice.");
+            }
+        } catch (Exception e) {
+            System.out.println("Filter failed: " + e.getMessage());
+        }
+    }
 
-         } catch (ValidationException e) {
-             System.out.println("Search failed: " + e.getMessage());
-         } catch (Exception e) {
-             System.out.println("Unexpected error: " + e.getMessage());
-         }
-     }
+    // ===== Helpers =====
 
+    private static void printNamesOnly(List<Contact> contacts) {
+        if (contacts == null || contacts.isEmpty()) { System.out.println("(no results)"); return; }
+        for (int i = 0; i < contacts.size(); i++) {
+            System.out.printf("%d) %s%n", i + 1, contacts.get(i).getName());
+        }
+    }
 
-    // ===== Helpers (reused) =====
+    private static void printNamesOnlyWithDate(List<Contact> contacts) {
+        if (contacts == null || contacts.isEmpty()) { System.out.println("(no results)"); return; }
+        for (int i = 0; i < contacts.size(); i++) {
+            var c = contacts.get(i);
+            System.out.printf("%d) %s (created: %s)%n", i + 1, c.getName(),
+                    c.getCreatedAt() == null ? "-" : c.getCreatedAt().toLocalDate());
+        }
+    }
+
+    private static void printNamesOnlyWithCount(List<Contact> contacts) {
+        if (contacts == null || contacts.isEmpty()) { System.out.println("(no results)"); return; }
+        for (int i = 0; i < contacts.size(); i++) {
+            var c = contacts.get(i);
+            System.out.printf("%d) %s (times contacted: %d)%n", i + 1, c.getName(), c.getTimesContacted());
+        }
+    }
+
+    private static LocalDate readOptionalDate(Scanner sc, String prompt) {
+        System.out.print(prompt);
+        String s = sc.nextLine().trim();
+        if (s.isEmpty()) return null;
+        try {
+            return LocalDate.parse(s);
+        } catch (Exception e) {
+            System.out.println("Invalid date. Ignoring.");
+            return null;
+        }
+    }
 
     private static String readRequiredNonBlank(Scanner sc, String prompt) {
         while (true) {
             System.out.print(prompt);
             String v = sc.nextLine();
-            if (v != null && !v.trim().isEmpty()) {
-                return v.trim();
-            }
+            if (v != null && !v.trim().isEmpty()) return v.trim();
             System.out.println("Input cannot be blank. Please try again.");
         }
     }
@@ -535,25 +612,11 @@ public class ConsoleApp {
         while (true) {
             System.out.print("Phone: ");
             String raw = sc.nextLine();
-
-            if (raw == null || raw.trim().isEmpty()) {
-                System.out.println("Phone cannot be blank/whitespace. Please enter a valid number.");
-                continue;
-            }
-
-            try {
-                new PhoneNumber(raw);
-                phones.add(raw.trim());
-            } catch (IllegalArgumentException e) {
-                System.out.println("Invalid phone: " + e.getMessage());
-                continue;
-            }
-
+            if (raw == null || raw.trim().isEmpty()) { System.out.println("Phone cannot be blank/whitespace. Please enter a valid number."); continue; }
+            try { new PhoneNumber(raw); phones.add(raw.trim()); }
+            catch (IllegalArgumentException e) { System.out.println("Invalid phone: " + e.getMessage()); continue; }
             if (!askYesNo(sc, "Add another number? (Y/n): ", true)) {
-                if (requireAtLeastOne && phones.isEmpty()) {
-                    System.out.println("At least one phone number is required.");
-                    continue;
-                }
+                if (requireAtLeastOne && phones.isEmpty()) { System.out.println("At least one phone number is required."); continue; }
                 return phones;
             }
         }
@@ -564,25 +627,11 @@ public class ConsoleApp {
         while (true) {
             System.out.print("Email: ");
             String raw = sc.nextLine();
-
-            if (raw == null || raw.trim().isEmpty()) {
-                System.out.println("Email cannot be blank/whitespace. Please enter a valid email.");
-                continue;
-            }
-
-            try {
-                new Email(raw);
-                emails.add(raw.trim());
-            } catch (IllegalArgumentException e) {
-                System.out.println("Invalid email: " + e.getMessage());
-                continue;
-            }
-
+            if (raw == null || raw.trim().isEmpty()) { System.out.println("Email cannot be blank/whitespace. Please enter a valid email."); continue; }
+            try { new Email(raw); emails.add(raw.trim()); }
+            catch (IllegalArgumentException e) { System.out.println("Invalid email: " + e.getMessage()); continue; }
             if (!askYesNo(sc, "Add another email? (Y/n): ", true)) {
-                if (requireAtLeastOne && emails.isEmpty()) {
-                    System.out.println("At least one email is required.");
-                    continue;
-                }
+                if (requireAtLeastOne && emails.isEmpty()) { System.out.println("At least one email is required."); continue; }
                 return emails;
             }
         }
@@ -592,9 +641,7 @@ public class ConsoleApp {
         while (true) {
             System.out.print(prompt);
             String ans = sc.nextLine();
-            if (ans == null || ans.isBlank()) {
-                return defaultYes;
-            }
+            if (ans == null || ans.isBlank()) return defaultYes;
             char c = Character.toLowerCase(ans.trim().charAt(0));
             if (c == 'y') return true;
             if (c == 'n') return false;
@@ -608,14 +655,9 @@ public class ConsoleApp {
             String s = sc.nextLine().trim();
             try {
                 int idx = Integer.parseInt(s);
-                if (idx < 1 || idx > maxInclusive) {
-                    System.out.println("Please enter a number between 1 and " + maxInclusive + ".");
-                    continue;
-                }
+                if (idx < 1 || idx > maxInclusive) { System.out.println("Please enter a number between 1 and " + maxInclusive + "."); continue; }
                 return idx;
-            } catch (NumberFormatException e) {
-                System.out.println("Please enter a valid number.");
-            }
+            } catch (NumberFormatException e) { System.out.println("Please enter a valid number."); }
         }
     }
 
@@ -629,18 +671,14 @@ public class ConsoleApp {
             try {
                 int v = Integer.parseInt(s);
                 if (v >= 1 && v <= max) out.add(v);
-            } catch (NumberFormatException ignore) {
-            }
+            } catch (NumberFormatException ignore) {}
         }
-        LinkedHashSet<Integer> set = new LinkedHashSet<>(out); 
+        LinkedHashSet<Integer> set = new LinkedHashSet<>(out); // dedupe preserve order
         return new ArrayList<>(set);
     }
 
     private static boolean ensureLoggedIn() {
-        if (currentUser == null) {
-            System.out.println("You must login first.");
-            return false;
-        }
+        if (currentUser == null) { System.out.println("You must login first."); return false; }
         return true;
     }
 }
