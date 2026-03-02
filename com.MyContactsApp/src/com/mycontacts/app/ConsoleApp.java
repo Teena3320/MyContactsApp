@@ -1,36 +1,35 @@
-/**
- * Use Case 11: Create and Manage Tags
+/** 
+ * Use Case 12: Apply Tags to Contacts
+ * 
  * This module enables:
- * - Creating custom tags (e.g., Family, Work, Friends)
- * - Ensuring each tag name is unique for the logged in user
- * - Renaming existing tags
- * - Viewing all available tags
- * - Deleting tags safely without breaking contact data
- * - Keeping tag lists consistent across contacts
+ * - Assigning one or multiple tags to a contact
+ * - Removing tags from any contact
+ * - Viewing which tags a contact currently has
+ * - Keeping tag selections consistent even when tags or contacts change
  * 
  * Input behavior:
- * - Tag names must be non blank
- * - Rejects whitespace only names
- * - Renaming a tag requires a unique new name
- * - Deleting a tag removes it from contacts that use it
+ * - User selects a tag from their tag list
+ * - User selects a contact from their contact list
+ * - Rejects whitespace-only input for tag selection
+ * - Rejects invalid tag/contact indices
+ * - Ensures tags belong to the same owner as the contact
  * 
  * Safe update flow:
- * - Prevents duplicate tag names per user
- * - Ensures tag removal from contacts is clean and consistent
- * - Snapshot of tag list updated atomically after rename/delete
- * - Stores tags in a dedicated Tag structure for stability and identity
+ * - Prevents adding a tag that is already applied
+ * - Cleanly removes tag references using the contact’s internal tag set
+ * - Enforces many‑to‑one and many‑to‑many relationships safely
+ * - Updates are applied only to non‑deleted contacts
+ * - When a tag is deleted (UC 11), it is removed from all associated contacts automatically
  * 
  * Demonstrates:
- * - Encapsulation in a Tag class (identity, equality, managed naming)
- * - Exception handling (ValidationException, custom DuplicateTagException)
- * - Clear OOP relationships between Tag and Contact (many to many association)
- * - Clean workflow for create/rename/delete operations
- * - Consistent input rules matching previous use cases (non blank, duplicate safe)
+ * - Encapsulation of tag management inside Contact and TagService
+ * - Exception handling (ValidationException) for invalid or mismatched tag assignments
+ * - Clean OOP relationship handling (Contact ↔ Tag)
+ * - Consistent validation rules matching previous use cases (numeric selection, non‑blank inputs, owner checks)
  * 
  */
 
 package com.mycontacts.app;
-
 
 import com.mycontacts.domain.Contact;
 import com.mycontacts.domain.Email;
@@ -41,16 +40,16 @@ import com.mycontacts.exceptions.DuplicateContactException;
 import com.mycontacts.exceptions.DuplicateEmailException;
 import com.mycontacts.exceptions.DuplicateTagException;
 import com.mycontacts.exceptions.IncorrectPasswordException;
-import com.mycontacts.exceptions.InvalidCredentialException; // singular
+import com.mycontacts.exceptions.InvalidCredentialException; 
 import com.mycontacts.exceptions.ValidationException;
 import com.mycontacts.repository.ContactRepository;
 import com.mycontacts.repository.TagRepository;
 import com.mycontacts.repository.UserRepository;
 import com.mycontacts.service.ContactService;
 import com.mycontacts.service.ExportService;
-import com.mycontacts.service.FilterService;   // UC-10
-import com.mycontacts.service.SearchService;  // UC-09
-import com.mycontacts.service.TagService;     // UC-11
+import com.mycontacts.service.FilterService;  
+import com.mycontacts.service.SearchService;  
+import com.mycontacts.service.TagService;     
 import com.mycontacts.service.UserService;
 import com.mycontacts.view.ContactRenderer;
 
@@ -72,13 +71,13 @@ public class ConsoleApp {
         UserService userService = new UserService(userRepo);
         ContactService contactService = new ContactService(contactRepo);
         ExportService exportService = new ExportService();
-        SearchService searchService = new SearchService(contactRepo); // UC-09
-        FilterService filterService = new FilterService(contactRepo); // UC-10
-        TagService tagService = new TagService(tagRepo, contactRepo); // UC-11
+        SearchService searchService = new SearchService(contactRepo); 
+        FilterService filterService = new FilterService(contactRepo); 
+        TagService tagService = new TagService(tagRepo, contactRepo); 
 
         try (Scanner sc = new Scanner(System.in)) {
             boolean running = true;
-            System.out.println("=== MyContacts — UC-11 ===");
+            System.out.println("=== MyContacts — UC-12 ===");
 
             while (running) {
                 System.out.println("\nMenu:");
@@ -92,16 +91,16 @@ public class ConsoleApp {
                 System.out.println(" 8) View Contact Details");
                 System.out.println(" 9) Edit Contact");
                 System.out.println("10) Delete Contact");
-                System.out.println("11) Bulk Operations");        // UC-08
+                System.out.println("11) Bulk Operations");        
                 System.out.println("12) Logout");
                 System.out.println("13) Exit");
-                System.out.println("14) Search Contacts");         // UC-09
-                System.out.println("15) Filter Contacts");         // UC-10
-                System.out.println("16) Tags: Create");            // UC-11
-                System.out.println("17) Tags: Rename");            // UC-11
-                System.out.println("18) Tags: Delete");            // UC-11
-                System.out.println("19) Tags: List");              // UC-11
-                System.out.println("20) Tags: Apply/Remove on Contact"); // optional helper
+                System.out.println("14) Search Contacts");        
+                System.out.println("15) Filter Contacts");        
+                System.out.println("16) Tags: Create");            
+                System.out.println("17) Tags: Rename");            
+                System.out.println("18) Tags: Delete");            
+                System.out.println("19) Tags: List");              
+                System.out.println("20) Tags: Apply/Remove on Contact");
                 System.out.print("Choose: ");
                 String choice = sc.nextLine().trim();
 
@@ -121,11 +120,11 @@ public class ConsoleApp {
                     case "13": running = false; break;
                     case "14": handleSearchContacts(sc, searchService, contactRepo); break;
                     case "15": handleFilterContacts(sc, filterService); break;
-                    case "16": handleCreateTag(sc, tagService); break;         // UC-11
-                    case "17": handleRenameTag(sc, tagService); break;         // UC-11
-                    case "18": handleDeleteTag(sc, tagService); break;         // UC-11
-                    case "19": handleListTags(tagService); break;              // UC-11
-                    case "20": handleApplyRemoveTag(sc, tagService, contactRepo); break; // helper
+                    case "16": handleCreateTag(sc, tagService); break;
+                    case "17": handleRenameTag(sc, tagService); break;
+                    case "18": handleDeleteTag(sc, tagService); break;
+                    case "19": handleListTags(tagService); break;
+                    case "20": handleApplyRemoveTag(sc, tagService, contactRepo); break; // UC-12
                     default: System.out.println("Invalid choice. Try again.");
                 }
             }
@@ -133,7 +132,6 @@ public class ConsoleApp {
 
         System.out.println("Goodbye!");
     }
-
 
     // ===== UC-01: Registration =====
     private static void handleRegistration(Scanner sc, UserService userService) {
@@ -269,7 +267,7 @@ public class ConsoleApp {
 
         boolean uppercase = askYesNo(sc, "Uppercase name? (y/N): ", false);
         boolean maskEmails = askYesNo(sc, "Mask emails? (Y/n): ", true);
-        String rendered = com.mycontacts.view.ContactRenderer.render(chosen, uppercase, maskEmails);
+        String rendered = ContactRenderer.render(chosen, uppercase, maskEmails);
         System.out.println("\n" + rendered);
     }
 
@@ -579,70 +577,146 @@ public class ConsoleApp {
     }
 
     // ===== UC-11: Create Tag =====
-       private static void handleCreateTag(Scanner sc, TagService tagService) {
-           if (!ensureLoggedIn()) return;
-           System.out.println("\n--- Create Tag ---");
-           String name = readRequiredNonBlank(sc, "Tag name: ");
-           try {
-               Tag t = tagService.createTag(currentUser.getId(), name);
-               System.out.println("Created tag: " + t.getName());
-           } catch (DuplicateTagException | ValidationException e) {
-               System.out.println("Create tag failed: " + e.getMessage());
-           } catch (Exception e) { System.out.println("Unexpected error: " + e.getMessage()); }
-       }
+    private static void handleCreateTag(Scanner sc, TagService tagService) {
+        if (!ensureLoggedIn()) return;
+        System.out.println("\n--- Create Tag ---");
+        String name = readRequiredNonBlank(sc, "Tag name: ");
+        try {
+            Tag t = tagService.createTag(currentUser.getId(), name);
+            System.out.println("Created tag: " + t.getName());
+        } catch (DuplicateTagException | ValidationException e) {
+            System.out.println("Create tag failed: " + e.getMessage());
+        } catch (Exception e) { System.out.println("Unexpected error: " + e.getMessage()); }
+    }
 
-       // ===== UC-11: Rename Tag =====
-       private static void handleRenameTag(Scanner sc, TagService tagService) {
-           if (!ensureLoggedIn()) return;
-           System.out.println("\n--- Rename Tag ---");
-           var tags = tagService.listTags(currentUser.getId());
-           if (tags.isEmpty()) { System.out.println("(no tags yet)"); return; }
-           for (int i = 0; i < tags.size(); i++) {
-               System.out.printf("%d) %s%n", i + 1, tags.get(i).getName());
-           }
-           int idx = askIndex(sc, "Choose tag: ", tags.size());
-           Tag chosen = tags.get(idx - 1);
-           String newName = readRequiredNonBlank(sc, "New name: ");
-           try {
-               tagService.renameTag(currentUser.getId(), chosen.getId(), newName);
-               System.out.println("Tag renamed.");
-           } catch (DuplicateTagException | ValidationException e) {
-               System.out.println("Rename tag failed: " + e.getMessage());
-           } catch (Exception e) { System.out.println("Unexpected error: " + e.getMessage()); }
-       }
+    // ===== UC-11: Rename Tag =====
+    private static void handleRenameTag(Scanner sc, TagService tagService) {
+        if (!ensureLoggedIn()) return;
+        System.out.println("\n--- Rename Tag ---");
+        var tags = tagService.listTags(currentUser.getId());
+        if (tags.isEmpty()) { System.out.println("(no tags yet)"); return; }
+        for (int i = 0; i < tags.size(); i++) {
+            System.out.printf("%d) %s%n", i + 1, tags.get(i).getName());
+        }
+        int idx = askIndex(sc, "Choose tag: ", tags.size());
+        Tag chosen = tags.get(idx - 1);
+        String newName = readRequiredNonBlank(sc, "New name: ");
+        try {
+            tagService.renameTag(currentUser.getId(), chosen.getId(), newName);
+            System.out.println("Tag renamed.");
+        } catch (DuplicateTagException | ValidationException e) {
+            System.out.println("Rename tag failed: " + e.getMessage());
+        } catch (Exception e) { System.out.println("Unexpected error: " + e.getMessage()); }
+    }
 
-       // ===== UC-11: Delete Tag =====
-       private static void handleDeleteTag(Scanner sc, TagService tagService) {
-           if (!ensureLoggedIn()) return;
-           System.out.println("\n--- Delete Tag ---");
-           var tags = tagService.listTags(currentUser.getId());
-           if (tags.isEmpty()) { System.out.println("(no tags yet)"); return; }
-           for (int i = 0; i < tags.size(); i++) {
-               System.out.printf("%d) %s%n", i + 1, tags.get(i).getName());
-           }
-           int idx = askIndex(sc, "Choose tag to delete: ", tags.size());
-           Tag chosen = tags.get(idx - 1);
-           boolean ok = askYesNo(sc, "Delete tag '" + chosen.getName() + "'? (y/N): ", false);
-           if (!ok) { System.out.println("Cancelled."); return; }
-           try {
-               tagService.deleteTag(currentUser.getId(), chosen.getId());
-               System.out.println("Tag deleted and removed from all contacts.");
-           } catch (ValidationException e) {
-               System.out.println("Delete tag failed: " + e.getMessage());
-           } catch (Exception e) { System.out.println("Unexpected error: " + e.getMessage()); }
-       }
+    // ===== UC-11: Delete Tag =====
+    private static void handleDeleteTag(Scanner sc, TagService tagService) {
+        if (!ensureLoggedIn()) return;
+        System.out.println("\n--- Delete Tag ---");
+        var tags = tagService.listTags(currentUser.getId());
+        if (tags.isEmpty()) { System.out.println("(no tags yet)"); return; }
+        for (int i = 0; i < tags.size(); i++) {
+            System.out.printf("%d) %s%n", i + 1, tags.get(i).getName());
+        }
+        int idx = askIndex(sc, "Choose tag to delete: ", tags.size());
+        Tag chosen = tags.get(idx - 1);
+        boolean ok = askYesNo(sc, "Delete tag '" + chosen.getName() + "'? (y/N): ", false);
+        if (!ok) { System.out.println("Cancelled."); return; }
+        try {
+            tagService.deleteTag(currentUser.getId(), chosen.getId());
+            System.out.println("Tag deleted and removed from all contacts.");
+        } catch (ValidationException e) {
+            System.out.println("Delete tag failed: " + e.getMessage());
+        } catch (Exception e) { System.out.println("Unexpected error: " + e.getMessage()); }
+    }
 
-       // ===== UC-11: List Tags =====
-       private static void handleListTags(TagService tagService) {
-           if (!ensureLoggedIn()) return;
-           System.out.println("\n--- Tags ---");
-           var tags = tagService.listTags(currentUser.getId());
-           if (tags.isEmpty()) { System.out.println("(no tags yet)"); return; }
-           for (int i = 0; i < tags.size(); i++) {
-               System.out.printf("%d) %s%n", i + 1, tags.get(i).getName());
-           }
-       }
+    // ===== UC-11: List Tags =====
+    private static void handleListTags(TagService tagService) {
+        if (!ensureLoggedIn()) return;
+        System.out.println("\n--- Tags ---");
+        var tags = tagService.listTags(currentUser.getId());
+        if (tags.isEmpty()) { System.out.println("(no tags yet)"); return; }
+        for (int i = 0; i < tags.size(); i++) {
+            System.out.printf("%d) %s%n", i + 1, tags.get(i).getName());
+        }
+    }
 
+    // ===== UC-12: Apply/Remove Tag on a Contact (enhanced multi-select) =====
+    private static void handleApplyRemoveTag(Scanner sc, TagService tagService, ContactRepository contactRepo) {
+        if (!ensureLoggedIn()) return;
+        System.out.println("\n--- Apply/Remove Tag on Contact (UC-12) ---");
+
+        var tags = tagService.listTags(currentUser.getId());
+        if (tags.isEmpty()) { System.out.println("(no tags yet)"); return; }
+        System.out.println("Available Tags:");
+        for (int i = 0; i < tags.size(); i++) {
+            System.out.printf("%d) %s%n", i + 1, tags.get(i).getName());
+        }
+
+        System.out.print("Select tag(s) (comma-separated numbers, e.g., 1,3): ");
+        List<Integer> tagIdxs = parseIndexList(sc.nextLine().trim(), tags.size());
+        if (tagIdxs.isEmpty()) { System.out.println("No valid tag selections."); return; }
+        List<Tag> chosenTags = new ArrayList<>();
+        for (int i : tagIdxs) chosenTags.add(tags.get(i - 1));
+
+        var contacts = contactRepo.findAllByOwner(currentUser.getId());
+        if (contacts.isEmpty()) { System.out.println("(no contacts yet)"); return; }
+        System.out.println("\nContacts:");
+        for (int i = 0; i < contacts.size(); i++) {
+            System.out.printf("%d) %s%n", i + 1, contacts.get(i).getName());
+        }
+
+        System.out.print("Select contact(s) (comma-separated numbers, e.g., 2,4): ");
+        List<Integer> contactIdxs = parseIndexList(sc.nextLine().trim(), contacts.size());
+        if (contactIdxs.isEmpty()) { System.out.println("No valid contact selections."); return; }
+        List<Contact> chosenContacts = new ArrayList<>();
+        for (int i : contactIdxs) chosenContacts.add(contacts.get(i - 1));
+
+        System.out.print("\n1) Apply tags  2) Remove tags  3) Cancel  Choose: ");
+        String op = sc.nextLine().trim();
+
+        try {
+            switch (op) {
+                case "1": { // Apply multiple tags to multiple contacts
+                    int applied = 0;
+                    for (Contact c : chosenContacts) {
+                        for (Tag t : chosenTags) {
+                            try {
+                                tagService.addTagToContact(currentUser.getId(), c.getId(), t.getId());
+                                applied++;
+                            } catch (ValidationException ignore) {
+                                // skip invalid (e.g., already applied) silently for bulk UX
+                            }
+                        }
+                    }
+                    System.out.println("Applied " + applied + " tag assignments.");
+                    break;
+                }
+                case "2": { // Remove multiple tags from multiple contacts
+                    int removed = 0;
+                    for (Contact c : chosenContacts) {
+                        for (Tag t : chosenTags) {
+                            try {
+                                tagService.removeTagFromContact(currentUser.getId(), c.getId(), t.getId());
+                                removed++;
+                            } catch (ValidationException ignore) {
+                                // skip not present silently for bulk UX
+                            }
+                        }
+                    }
+                    System.out.println("Removed " + removed + " tag assignments.");
+                    break;
+                }
+                case "3":
+                    System.out.println("Cancelled.");
+                    break;
+                default:
+                    System.out.println("Invalid choice.");
+            }
+        } catch (Exception e) {
+            System.out.println("Operation failed: " + e.getMessage());
+        }
+    }
 
     // ===== Helpers =====
 
@@ -745,6 +819,7 @@ public class ConsoleApp {
         }
     }
 
+    /** Parses a comma-separated list of indices (e.g., "1, 3,5") into 1-based ints within [1..max]. */
     private static List<Integer> parseIndexList(String input, int max) {
         List<Integer> out = new ArrayList<>();
         if (input == null || input.isBlank()) return out;
@@ -765,49 +840,4 @@ public class ConsoleApp {
         if (currentUser == null) { System.out.println("You must login first."); return false; }
         return true;
     }
-    
-
- // ===== UC-11 (Helper): Apply/Remove Tag on a Contact =====
-     private static void handleApplyRemoveTag(Scanner sc, TagService tagService, ContactRepository contactRepo) {
-         if (!ensureLoggedIn()) return;
-         System.out.println("\n--- Apply/Remove Tag on Contact ---");
-         var tags = tagService.listTags(currentUser.getId());
-         if (tags.isEmpty()) { System.out.println("(no tags yet)"); return; }
-         for (int i = 0; i < tags.size(); i++) {
-             System.out.printf("%d) %s%n", i + 1, tags.get(i).getName());
-         }
-         int tIdx = askIndex(sc, "Choose tag: ", tags.size());
-         Tag chosenTag = tags.get(tIdx - 1);
-
-         var contacts = contactRepo.findAllByOwner(currentUser.getId());
-         if (contacts.isEmpty()) { System.out.println("(no contacts yet)"); return; }
-         for (int i = 0; i < contacts.size(); i++) {
-             System.out.printf("%d) %s%n", i + 1, contacts.get(i).getName());
-         }
-         int cIdx = askIndex(sc, "Choose contact: ", contacts.size());
-         Contact chosenContact = contacts.get(cIdx - 1);
-
-         System.out.print("1) Apply  2) Remove  3) Cancel  Choose: ");
-         String op = sc.nextLine().trim();
-         try {
-             switch (op) {
-                 case "1":
-                     tagService.addTagToContact(currentUser.getId(), chosenContact.getId(), chosenTag.getId());
-                     System.out.println("Tag applied.");
-                     break;
-                 case "2":
-                     tagService.removeTagFromContact(currentUser.getId(), chosenContact.getId(), chosenTag.getId());
-                     System.out.println("Tag removed.");
-                     break;
-                 case "3":
-                     System.out.println("Cancelled.");
-                     break;
-                 default:
-                     System.out.println("Invalid choice.");
-             }
-         } catch (ValidationException e) {
-             System.out.println("Operation failed: " + e.getMessage());
-         } catch (Exception e) { System.out.println("Unexpected error: " + e.getMessage()); }
-     }
-
 }
